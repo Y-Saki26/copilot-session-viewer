@@ -1,0 +1,93 @@
+{
+  "name": "copilot-session-viewer",
+  "displayName": "Copilot Session Viewer",
+  "description": "VS Code extension mockup for scanning Copilot Chat session logs.",
+  "version": "0.0.1",
+  "publisher": "local",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "copilotSessionViewer",
+          "title": "Copilot Logs",
+          "icon": "media/activitybar.svg"
+        }
+      ]
+    },
+    "views": {
+      "copilotSessionViewer": [
+        {
+          "type": "webview",
+          "id": "copilotSessionViewer.sessionsView",
+          "name": "Sessions"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "copilotSessionViewer.refreshSessions",
+        "title": "Copilot Session Viewer: Refresh Sessions"
+      },
+      {
+        "command": "copilotSessionViewer.openSettings",
+        "title": "Copilot Session Viewer: Open Settings"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "copilotSessionViewer.refreshSessions",
+          "when": "view == copilotSessionViewer.sessionsView",
+          "group": "navigation"
+        },
+        {
+          "command": "copilotSessionViewer.openSettings",
+          "when": "view == copilotSessionViewer.sessionsView",
+          "group": "navigation@2"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Copilot Session Viewer",
+      "properties": {
+        "copilotSessionViewer.workspaceStorageRoots": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "Additional workspaceStorage roots to scan. Example for Windows: %APPDATA%/Code/User/workspaceStorage"
+        },
+        "copilotSessionViewer.useBundledSampleData": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include the bundled sample data under resources/workspaceStorage when scanning."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile",
+    "prepackage:vsix": "npm run compile",
+    "package:vsix": "vsce package --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "2.27.0",
+    "@types/node": "^20.16.5",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.6.3"
+  },
+  "overrides": {
+    "cheerio": "1.0.0-rc.12"
+  }
+}

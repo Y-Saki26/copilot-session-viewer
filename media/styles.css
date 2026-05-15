@@ -1,0 +1,262 @@
+:root {
+  color-scheme: light dark;
+  --bg: color-mix(in srgb, var(--vscode-sideBar-background) 92%, transparent);
+  --surface: color-mix(in srgb, var(--vscode-editorWidget-background) 82%, transparent);
+  --border: color-mix(in srgb, var(--vscode-panel-border) 70%, transparent);
+  --text: var(--vscode-foreground);
+  --muted: var(--vscode-descriptionForeground);
+  --accent: var(--vscode-textLink-foreground);
+  --warning: var(--vscode-editorWarning-foreground);
+  --error: var(--vscode-editorError-foreground);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 18%, transparent), transparent 45%),
+    linear-gradient(180deg, color-mix(in srgb, var(--bg) 95%, black 5%), var(--bg));
+  color: var(--text);
+  font-family: 'Cascadia Code', 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+.app {
+  padding: 16px;
+  display: grid;
+  gap: 16px;
+}
+
+.hero,
+.card,
+.workspace-group,
+.session {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 16px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
+}
+
+.hero {
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: var(--accent);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 24px;
+  line-height: 1.15;
+}
+
+.subtitle,
+.meta,
+.path,
+code,
+.workspace-label,
+.workspace-stats span {
+  color: var(--muted);
+}
+
+.workspace-groups {
+  display: grid;
+  gap: 16px;
+}
+
+.workspace-group {
+  display: grid;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.workspace-header {
+  list-style: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: end;
+  padding: 14px;
+  cursor: pointer;
+}
+
+.workspace-header::-webkit-details-marker {
+  display: none;
+}
+
+.workspace-header h2 {
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.workspace-chevron {
+  align-self: center;
+  color: var(--muted);
+  transition: transform 160ms ease;
+}
+
+.workspace-group:not([open]) .workspace-chevron {
+  transform: rotate(-90deg);
+}
+
+.workspace-group .list {
+  padding: 0 14px 14px;
+}
+
+.workspace-group:not([open]) .list {
+  display: none;
+}
+
+.workspace-label {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.workspace-stats {
+  min-width: 96px;
+  text-align: right;
+  display: grid;
+  gap: 4px;
+}
+
+.workspace-stats strong {
+  font-size: 22px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+button {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 8px 14px;
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--vscode-button-foreground);
+  font: inherit;
+}
+
+button.secondary {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+}
+
+.metric,
+.card,
+.session {
+  padding: 14px;
+}
+
+.metric {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.metric span {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.metric strong {
+  font-size: 18px;
+}
+
+.roots ul,
+.warning ul {
+  padding-left: 18px;
+  margin: 10px 0 0;
+}
+
+.warning {
+  border-color: color-mix(in srgb, var(--warning) 60%, var(--border));
+}
+
+.warning li {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.error {
+  border-color: color-mix(in srgb, var(--error) 60%, var(--border));
+}
+
+.list {
+  display: grid;
+  gap: 10px;
+}
+
+.session {
+  display: grid;
+  gap: 8px;
+}
+
+.session h3 {
+  font-size: 17px;
+  line-height: 1.35;
+}
+
+.empty {
+  text-align: center;
+}
+
+code {
+  font-family: 'Cascadia Code', 'SFMono-Regular', Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+@media (max-width: 480px) {
+  .app {
+    padding: 12px;
+  }
+
+  h1 {
+    font-size: 21px;
+  }
+
+  .workspace-header {
+    grid-template-columns: 1fr auto;
+    align-items: start;
+  }
+
+  .workspace-header > div:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .workspace-stats {
+    text-align: left;
+  }
+}
