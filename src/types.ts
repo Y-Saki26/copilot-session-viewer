@@ -21,4 +21,5 @@ export interface ScanSummary {
   sessions: SessionSummary[];
   warnings: ScanWarning[];
   scannedAt: number;
+  loadedFromCache?: boolean;
 }

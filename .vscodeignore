@@ -4,6 +4,7 @@
 src/**
 docs/**
 node_modules/**
+!node_modules/sql.js/**
 package-lock.json
 tsconfig.json
 resources/**

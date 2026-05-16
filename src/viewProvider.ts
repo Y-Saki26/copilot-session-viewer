@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 
 import { CopilotSessionScanner } from './logScanner';
+import { ScanCacheRepository } from './scanCacheRepository';
 import { ScanSummary } from './types';
 
 export class SessionsViewProvider implements vscode.WebviewViewProvider {
@@ -8,9 +9,12 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
 
   private view?: vscode.WebviewView;
   private readonly scanner = new CopilotSessionScanner();
+  private readonly cacheRepository: ScanCacheRepository;
   private lastScan?: ScanSummary;
 
-  public constructor(private readonly context: vscode.ExtensionContext) {}
+  public constructor(private readonly context: vscode.ExtensionContext) {
+    this.cacheRepository = new ScanCacheRepository(context);
+  }
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void | Thenable<void> {
     this.view = webviewView;
@@ -20,12 +24,13 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
     };
     webviewView.webview.html = this.getHtml(webviewView.webview);
     webviewView.webview.onDidReceiveMessage((message) => this.handleMessage(message));
-    void this.refresh();
+    void this.initialize();
   }
 
   public async refresh(): Promise<void> {
     try {
       const scan = await this.scanner.scan(this.context);
+      await this.cacheRepository.save(scan);
       this.lastScan = scan;
       this.postMessage({ type: 'scanResult', value: scan });
     } catch (error) {
@@ -35,6 +40,20 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
         value: this.errorMessage(error, 'Failed to scan session logs.')
       });
     }
+  }
+
+  private async initialize(): Promise<void> {
+    try {
+      const cachedScan = await this.cacheRepository.load();
+      if (cachedScan) {
+        this.lastScan = cachedScan;
+        this.postMessage({ type: 'scanResult', value: cachedScan });
+      }
+    } catch (error) {
+      console.warn(this.errorMessage(error, 'Failed to load scan cache.'));
+    }
+
+    await this.refresh();
   }
 
   private handleMessage(message: unknown): void {

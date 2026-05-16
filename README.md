@@ -3,6 +3,7 @@
 GitHub Copilot Chat のセッションログを読み取り、表示する VS Code 拡張です。
 
 現在の実装はモックアップ段階で、workspaceStorage 配下の chatSessions を全走査し、workspace ごとにグループ化したセッションタイトル一覧をサイドバーに表示します。
+起動時には前回スキャン結果を SQLite キャッシュから即時表示し、その後バックグラウンドで再スキャンして更新します。
 
 ## できること
 
@@ -11,6 +12,7 @@ GitHub Copilot Chat のセッションログを読み取り、表示する VS Co
 - JSONL と JSON のセッションファイルを走査する
 - customTitle を優先し、無い場合は最初の入力文からタイトルを生成する
 - workspace ごとにグループ化し、各グループとセッションを更新日時の降順で表示する
+- 全スキャン結果を globalStorageUri 配下の SQLite キャッシュに保存する
 
 ## 設定
 

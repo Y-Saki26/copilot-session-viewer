@@ -52,6 +52,7 @@
 
     summary.innerHTML = [
       '<div class="metrics">',
+      metric('Source', scan.loadedFromCache ? 'Cache' : 'Live'),
       metric('Roots', String(scan.rootsScanned.length)),
       metric('Workspaces', String(scan.workspaceCount)),
       metric('Sessions', String(scan.sessionCount)),
