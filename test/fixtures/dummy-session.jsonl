@@ -1,0 +1,7 @@
+{"kind":0,"v":{"version":3,"sessionId":"fixture-session","creationDate":1715900000000,"initialLocation":"panel","responderUsername":"GitHub Copilot","requests":[],"pendingRequests":[],"inputState":{"inputText":"","attachments":[]}}}
+{"kind":1,"k":["customTitle"],"v":"Fixture Session"}
+{"kind":1,"k":["inputState","inputText"],"v":"Draft prompt for follow-up"}
+{"kind":2,"k":["requests"],"v":[{"requestId":"req-1","timestamp":1715900001000,"message":{"text":"Summarize the decoder change","parts":[]},"response":[]}]}
+{"kind":2,"k":["requests",0,"response"],"v":[{"kind":"thinking","value":"Reviewing the decoder changes"},{"value":"Decoder summary","supportThemeIcons":true}]}
+{"kind":1,"k":["debugFlag"],"v":true}
+{"kind":3,"k":["debugFlag"]}

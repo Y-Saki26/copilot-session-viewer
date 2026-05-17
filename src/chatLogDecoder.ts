@@ -1,3 +1,6 @@
+import * as fs from 'fs/promises';
+import * as path from 'path';
+
 import { ChatLogDecodeResult, SerializableChatData } from './types';
 
 const enum MutationEntryKind {
@@ -210,6 +213,24 @@ export class ChatLogDecoder {
     const suffix = error instanceof Error ? error.message : String(error);
     return `${prefix} ${suffix}`;
   }
+}
+
+export async function decodeChatLogFile(
+  sessionFile: string,
+  decoder: ChatLogDecoder = new ChatLogDecoder()
+): Promise<SerializableChatData> {
+  const contents = await fs.readFile(sessionFile, 'utf8');
+  const extension = path.extname(sessionFile).toLowerCase();
+
+  if (extension === '.jsonl') {
+    return decoder.decodeJsonLines(contents).data;
+  }
+
+  if (extension === '.json') {
+    return decoder.decodeJsonSnapshot(contents);
+  }
+
+  throw new Error(`Unsupported session log extension: ${extension || '<none>'}`);
 }
 
 function formatPath(path: ObjectPath): string {

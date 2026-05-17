@@ -2,7 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
-import { ChatLogDecoder } from './chatLogDecoder';
+import { ChatLogDecoder, decodeChatLogFile } from './chatLogDecoder';
 import { ScanSummary, ScanWarning, SessionSummary } from './types';
 
 type WorkspaceDescriptor = {
@@ -58,10 +58,7 @@ export class CopilotSessionScanner {
   }
 
   public async readSessionData(sessionFile: string) {
-    const contents = await fs.readFile(sessionFile, 'utf8');
-    return sessionFile.endsWith('.jsonl')
-      ? this.chatLogDecoder.decodeJsonLines(contents).data
-      : this.chatLogDecoder.decodeJsonSnapshot(contents);
+    return decodeChatLogFile(sessionFile, this.chatLogDecoder);
   }
 
   private async resolveRoots(context: vscode.ExtensionContext, warnings: ScanWarning[]): Promise<string[]> {
