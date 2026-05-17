@@ -9,6 +9,41 @@ export interface SessionSummary {
   updatedAt: number;
 }
 
+export interface SerializableChatInputState {
+  inputText?: string;
+  [key: string]: unknown;
+}
+
+export interface SerializableChatMessage {
+  text?: string;
+  parts?: unknown[];
+  [key: string]: unknown;
+}
+
+export interface SerializableChatRequestData {
+  requestId?: string;
+  timestamp?: number;
+  message?: SerializableChatMessage;
+  response?: unknown[];
+  [key: string]: unknown;
+}
+
+export interface SerializableChatData {
+  version?: number;
+  sessionId?: string;
+  creationDate?: number;
+  customTitle?: string;
+  inputState?: SerializableChatInputState;
+  requests?: SerializableChatRequestData[];
+  pendingRequests?: unknown[];
+  [key: string]: unknown;
+}
+
+export interface ChatLogDecodeResult<T> {
+  data: T;
+  lineCount: number;
+}
+
 export interface ScanWarning {
   location: string;
   message: string;
