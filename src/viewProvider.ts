@@ -23,7 +23,7 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
     private readonly logger: OutputLogger
   ) {
     this.cacheRepository = new ScanCacheRepository(context);
-    this.sessionPanel = new SessionPanel(context);
+    this.sessionPanel = new SessionPanel(context, logger);
   }
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void | Thenable<void> {
@@ -31,7 +31,10 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
     this.view = webviewView;
     webviewView.webview.options = {
       enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'media')]
+      localResourceRoots: [
+        vscode.Uri.joinPath(this.context.extensionUri, 'media'),
+        vscode.Uri.joinPath(this.context.extensionUri, 'node_modules')
+      ]
     };
     webviewView.webview.html = this.getHtml(webviewView.webview);
     webviewView.webview.onDidReceiveMessage((message) => this.handleMessage(message));
@@ -124,6 +127,9 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
           void this.loadWorkspaceSessions(message.chatSessionsDir);
         }
         return;
+      case 'clientLog':
+        this.logClientMessage(message.value);
+        return;
       default:
         return;
     }
@@ -142,7 +148,7 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src ${webview.cspSource}; script-src ${webview.cspSource} 'nonce-${nonce}';" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="${styleUri}" />
     <title>Copilot Session Viewer</title>
@@ -164,7 +170,7 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
       <section id="warnings" class="warnings"></section>
       <section id="sessions" class="sessions"></section>
     </div>
-    <script nonce="${nonce}" src="${scriptUri}"></script>
+    <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
   </body>
 </html>`;
   }
@@ -290,6 +296,36 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
   private errorMessage(error: unknown, prefix: string): string {
     const suffix = error instanceof Error ? error.message : String(error);
     return `${prefix} ${suffix}`;
+  }
+
+  private logClientMessage(value: unknown): void {
+    if (!this.isObject(value) || typeof value.message !== 'string') {
+      return;
+    }
+
+    const level = value.level === 'info' || value.level === 'warn' || value.level === 'error'
+      ? value.level
+      : 'error';
+    const source = typeof value.source === 'string' ? value.source : 'webview';
+    const details = typeof value.details === 'string' ? value.details : undefined;
+    const message = `[webview:${source}] ${value.message}`;
+
+    if (level === 'info') {
+      this.logger.info(details ? `${message} ${details}` : message);
+      return;
+    }
+
+    if (level === 'warn') {
+      this.logger.warn(details ? `${message} ${details}` : message);
+      return;
+    }
+
+    if (details) {
+      this.logger.error(message, details);
+      return;
+    }
+
+    this.logger.error(message);
   }
 
   private logWarnings(scope: string, warnings: ReadonlyArray<{ location: string; message: string }>): void {
