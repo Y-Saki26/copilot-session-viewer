@@ -4,7 +4,7 @@ import { mapChatSessionDocument } from './chatDocumentMapper';
 import { CopilotSessionScanner } from './logScanner';
 import { ScanCacheRepository } from './scanCacheRepository';
 import { SessionPanel } from './sessionPanel';
-import { ScanSummary, SessionSummary } from './types';
+import { ScanSummary, SessionSummary, WorkspaceSummary } from './types';
 
 export class SessionsViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewId = 'copilotSessionViewer.sessionsView';
@@ -13,6 +13,8 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
   private readonly scanner = new CopilotSessionScanner();
   private readonly cacheRepository: ScanCacheRepository;
   private readonly sessionPanel: SessionPanel;
+  private readonly workspaceSessions = new Map<string, SessionSummary[]>();
+  private readonly workspaceLoads = new Map<string, Promise<void>>();
   private lastScan?: ScanSummary;
 
   public constructor(private readonly context: vscode.ExtensionContext) {
@@ -33,6 +35,8 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
 
   public async refresh(): Promise<void> {
     try {
+      this.workspaceSessions.clear();
+      this.workspaceLoads.clear();
       const scan = await this.scanner.scan(this.context);
       await this.cacheRepository.save(scan);
       this.lastScan = scan;
@@ -81,8 +85,21 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
         );
         return;
       case 'selectSession':
+        if (this.isSessionSummary(message.session)) {
+          void this.openSession(message.session);
+          return;
+        }
+
         if (typeof message.sourcePath === 'string') {
-          void this.openSession(message.sourcePath);
+          const summary = this.findSessionSummary(message.sourcePath);
+          if (summary) {
+            void this.openSession(summary);
+          }
+        }
+        return;
+      case 'loadWorkspaceSessions':
+        if (typeof message.chatSessionsDir === 'string') {
+          void this.loadWorkspaceSessions(message.chatSessionsDir);
         }
         return;
       default:
@@ -130,15 +147,7 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
 </html>`;
   }
 
-  private async openSession(sourcePath: string): Promise<void> {
-    const summary = this.findSessionSummary(sourcePath);
-    if (!summary) {
-      const message = `Failed to find session metadata for ${sourcePath}.`;
-      this.sessionPanel.showError('Session not found', message);
-      void vscode.window.showErrorMessage(message);
-      return;
-    }
-
+  private async openSession(summary: SessionSummary): Promise<void> {
     this.sessionPanel.showLoading(summary);
 
     try {
@@ -153,7 +162,93 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
   }
 
   private findSessionSummary(sourcePath: string): SessionSummary | undefined {
-    return this.lastScan?.sessions.find((session) => session.sourcePath === sourcePath);
+    for (const sessions of this.workspaceSessions.values()) {
+      const match = sessions.find((session) => session.sourcePath === sourcePath);
+      if (match) {
+        return match;
+      }
+    }
+
+    return undefined;
+  }
+
+  private async loadWorkspaceSessions(chatSessionsDir: string): Promise<void> {
+    const cachedSessions = this.workspaceSessions.get(chatSessionsDir);
+    if (cachedSessions) {
+      this.postMessage({
+        type: 'workspaceSessionsLoaded',
+        value: {
+          chatSessionsDir,
+          sessions: cachedSessions,
+          warnings: []
+        }
+      });
+      return;
+    }
+
+    const inflight = this.workspaceLoads.get(chatSessionsDir);
+    if (inflight) {
+      await inflight;
+      return;
+    }
+
+    const workspace = this.findWorkspaceSummary(chatSessionsDir);
+    if (!workspace) {
+      this.postMessage({
+        type: 'workspaceSessionsError',
+        value: {
+          chatSessionsDir,
+          message: `Failed to find workspace metadata for ${chatSessionsDir}.`
+        }
+      });
+      return;
+    }
+
+    const loadTask = this.loadWorkspaceSessionsInternal(workspace);
+    this.workspaceLoads.set(chatSessionsDir, loadTask);
+
+    try {
+      await loadTask;
+    } finally {
+      this.workspaceLoads.delete(chatSessionsDir);
+    }
+  }
+
+  private async loadWorkspaceSessionsInternal(workspace: WorkspaceSummary): Promise<void> {
+    try {
+      const result = await this.scanner.readWorkspaceSessions(workspace);
+      this.workspaceSessions.set(workspace.chatSessionsDir, result.sessions);
+      this.postMessage({
+        type: 'workspaceSessionsLoaded',
+        value: {
+          chatSessionsDir: workspace.chatSessionsDir,
+          sessions: result.sessions,
+          warnings: result.warnings
+        }
+      });
+    } catch (error) {
+      this.postMessage({
+        type: 'workspaceSessionsError',
+        value: {
+          chatSessionsDir: workspace.chatSessionsDir,
+          message: this.errorMessage(error, 'Failed to load workspace sessions.')
+        }
+      });
+    }
+  }
+
+  private findWorkspaceSummary(chatSessionsDir: string): WorkspaceSummary | undefined {
+    return this.lastScan?.workspaces.find((workspace) => workspace.chatSessionsDir === chatSessionsDir);
+  }
+
+  private isSessionSummary(value: unknown): value is SessionSummary {
+    return this.isObject(value)
+      && typeof value.id === 'string'
+      && typeof value.title === 'string'
+      && typeof value.workspaceHash === 'string'
+      && typeof value.workspaceName === 'string'
+      && typeof value.sourcePath === 'string'
+      && typeof value.updatedAt === 'number';
   }
 
   private isObject(value: unknown): value is Record<string, any> {

@@ -3,7 +3,7 @@ import * as path from 'path';
 import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
 import * as vscode from 'vscode';
 
-import { ScanSummary, ScanWarning, SessionSummary } from './types';
+import { ScanSummary, ScanWarning, SessionSummary, WorkspaceSummary } from './types';
 
 let sqlJsInstance: Promise<SqlJsStatic> | undefined;
 
@@ -20,15 +20,29 @@ export class ScanCacheRepository {
       }
 
       const rootsScanned = this.readRoots(database);
-      const sessions = this.readSessions(database);
+      const workspaces = this.readWorkspaces(database);
       const warnings = this.readWarnings(database);
-      const workspaceCount = new Set(sessions.map((session) => session.workspaceHash)).size;
+
+      if (workspaces.length > 0) {
+        return {
+          rootsScanned,
+          workspaceCount: workspaces.length,
+          sessionCount: workspaces.reduce((count, workspace) => count + workspace.sessionCount, 0),
+          workspaces,
+          warnings,
+          scannedAt,
+          loadedFromCache: true
+        };
+      }
+
+      const sessions = this.readSessions(database);
+      const fallbackWorkspaces = this.groupSessionsIntoWorkspaces(sessions);
 
       return {
         rootsScanned,
-        workspaceCount,
+        workspaceCount: fallbackWorkspaces.length,
         sessionCount: sessions.length,
-        sessions,
+        workspaces: fallbackWorkspaces,
         warnings,
         scannedAt,
         loadedFromCache: true
@@ -46,6 +60,7 @@ export class ScanCacheRepository {
       database.exec('DELETE FROM metadata');
       database.exec('DELETE FROM roots');
       database.exec('DELETE FROM warnings');
+      database.exec('DELETE FROM workspaces');
       database.exec('DELETE FROM sessions');
 
       const metadataStatement = database.prepare('INSERT INTO metadata (key, value) VALUES (?, ?)');
@@ -64,32 +79,26 @@ export class ScanCacheRepository {
       }
       warningStatement.free();
 
-      const sessionStatement = database.prepare(`
-        INSERT INTO sessions (
-          session_id,
+      const workspaceStatement = database.prepare(`
+        INSERT INTO workspaces (
           workspace_hash,
-          title,
           workspace_name,
           workspace_folder,
-          source_path,
-          created_at,
-          updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          chat_sessions_dir,
+          session_count
+        ) VALUES (?, ?, ?, ?, ?)
       `);
 
-      for (const session of summary.sessions) {
-        sessionStatement.run([
-          session.id,
-          session.workspaceHash,
-          session.title,
-          session.workspaceName,
-          session.workspaceFolder ?? null,
-          session.sourcePath,
-          session.createdAt ?? null,
-          session.updatedAt
+      for (const workspace of summary.workspaces) {
+        workspaceStatement.run([
+          workspace.workspaceHash,
+          workspace.workspaceName,
+          workspace.workspaceFolder ?? null,
+          workspace.chatSessionsDir,
+          workspace.sessionCount
         ]);
       }
-      sessionStatement.free();
+      workspaceStatement.free();
 
       database.exec('COMMIT');
       await this.persist(database);
@@ -140,6 +149,14 @@ export class ScanCacheRepository {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         location TEXT NOT NULL,
         message TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS workspaces (
+        workspace_hash TEXT NOT NULL,
+        workspace_name TEXT NOT NULL,
+        workspace_folder TEXT,
+        chat_sessions_dir TEXT PRIMARY KEY,
+        session_count INTEGER NOT NULL
       );
 
       CREATE TABLE IF NOT EXISTS sessions (
@@ -217,6 +234,51 @@ export class ScanCacheRepository {
     return warnings;
   }
 
+  private readWorkspaces(database: Database): WorkspaceSummary[] {
+    const statement = database.prepare(`
+      SELECT
+        workspace_hash,
+        workspace_name,
+        workspace_folder,
+        chat_sessions_dir,
+        session_count
+      FROM workspaces
+      ORDER BY workspace_name ASC, chat_sessions_dir ASC
+    `);
+    const workspaces: WorkspaceSummary[] = [];
+
+    try {
+      while (statement.step()) {
+        const row = statement.getAsObject() as {
+          workspace_hash?: string;
+          workspace_name?: string;
+          workspace_folder?: string | null;
+          chat_sessions_dir?: string;
+          session_count?: number;
+        };
+
+        if (
+          typeof row.workspace_hash === 'string' &&
+          typeof row.workspace_name === 'string' &&
+          typeof row.chat_sessions_dir === 'string' &&
+          typeof row.session_count === 'number'
+        ) {
+          workspaces.push({
+            workspaceHash: row.workspace_hash,
+            workspaceName: row.workspace_name,
+            workspaceFolder: typeof row.workspace_folder === 'string' ? row.workspace_folder : undefined,
+            chatSessionsDir: row.chat_sessions_dir,
+            sessionCount: row.session_count
+          });
+        }
+      }
+    } finally {
+      statement.free();
+    }
+
+    return workspaces;
+  }
+
   private readSessions(database: Database): SessionSummary[] {
     const statement = database.prepare(`
       SELECT
@@ -271,6 +333,30 @@ export class ScanCacheRepository {
     }
 
     return sessions;
+  }
+
+  private groupSessionsIntoWorkspaces(sessions: SessionSummary[]): WorkspaceSummary[] {
+    const workspaces = new Map<string, WorkspaceSummary>();
+
+    for (const session of sessions) {
+      const chatSessionsDir = path.dirname(session.sourcePath);
+      const existing = workspaces.get(chatSessionsDir);
+
+      if (existing) {
+        existing.sessionCount += 1;
+        continue;
+      }
+
+      workspaces.set(chatSessionsDir, {
+        workspaceHash: session.workspaceHash,
+        workspaceName: session.workspaceName,
+        workspaceFolder: session.workspaceFolder,
+        chatSessionsDir,
+        sessionCount: 1
+      });
+    }
+
+    return Array.from(workspaces.values()).sort((left, right) => left.workspaceName.localeCompare(right.workspaceName) || left.chatSessionsDir.localeCompare(right.chatSessionsDir));
   }
 
   private async getSqlJs(): Promise<SqlJsStatic> {

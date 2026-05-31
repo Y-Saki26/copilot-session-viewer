@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 
 import { ChatLogDecoder, decodeChatLogFile } from './chatLogDecoder';
-import { ScanSummary, ScanWarning, SessionSummary } from './types';
+import { ScanSummary, ScanWarning, SessionSummary, WorkspaceSummary } from './types';
 
 type WorkspaceDescriptor = {
   workspaceHash: string;
@@ -25,33 +25,35 @@ export class CopilotSessionScanner {
   public async scan(context: vscode.ExtensionContext): Promise<ScanSummary> {
     const warnings: ScanWarning[] = [];
     const roots = await this.resolveRoots(context, warnings);
-    const workspaces: WorkspaceDescriptor[] = [];
+    const workspaceDescriptors: WorkspaceDescriptor[] = [];
 
     for (const root of roots) {
       const descriptors = await this.findWorkspaceDescriptors(root, warnings);
-      workspaces.push(...descriptors);
+      workspaceDescriptors.push(...descriptors);
     }
 
-    const sessions: SessionSummary[] = [];
+    const workspaces: WorkspaceSummary[] = [];
+    let sessionCount = 0;
 
-    for (const workspace of workspaces) {
+    for (const workspace of workspaceDescriptors) {
       const sessionFiles = await this.listSessionFiles(workspace.chatSessionsDir, warnings);
-
-      for (const sessionFile of sessionFiles) {
-        const session = await this.parseSessionFile(sessionFile, workspace, warnings);
-        if (session) {
-          sessions.push(session);
-        }
-      }
+      sessionCount += sessionFiles.length;
+      workspaces.push({
+        workspaceHash: workspace.workspaceHash,
+        workspaceName: workspace.workspaceName,
+        workspaceFolder: workspace.workspaceFolder,
+        chatSessionsDir: workspace.chatSessionsDir,
+        sessionCount: sessionFiles.length
+      });
     }
 
-    sessions.sort((left, right) => right.updatedAt - left.updatedAt || left.title.localeCompare(right.title));
+    workspaces.sort((left, right) => left.workspaceName.localeCompare(right.workspaceName) || left.chatSessionsDir.localeCompare(right.chatSessionsDir));
 
     return {
       rootsScanned: roots,
       workspaceCount: workspaces.length,
-      sessionCount: sessions.length,
-      sessions,
+      sessionCount,
+      workspaces,
       warnings,
       scannedAt: Date.now()
     };
@@ -59,6 +61,32 @@ export class CopilotSessionScanner {
 
   public async readSessionData(sessionFile: string) {
     return decodeChatLogFile(sessionFile, this.chatLogDecoder);
+  }
+
+  public async readWorkspaceSessions(workspace: WorkspaceSummary): Promise<{ sessions: SessionSummary[]; warnings: ScanWarning[] }> {
+    const warnings: ScanWarning[] = [];
+    const sessionFiles = await this.listSessionFiles(workspace.chatSessionsDir, warnings);
+    const sessions: SessionSummary[] = [];
+
+    for (const sessionFile of sessionFiles) {
+      const session = await this.parseSessionFile(sessionFile, {
+        workspaceHash: workspace.workspaceHash,
+        workspaceName: workspace.workspaceName,
+        workspaceFolder: workspace.workspaceFolder,
+        chatSessionsDir: workspace.chatSessionsDir
+      }, warnings);
+
+      if (session) {
+        sessions.push(session);
+      }
+    }
+
+    sessions.sort((left, right) => right.updatedAt - left.updatedAt || left.title.localeCompare(right.title));
+
+    return {
+      sessions,
+      warnings
+    };
   }
 
   private async resolveRoots(context: vscode.ExtensionContext, warnings: ScanWarning[]): Promise<string[]> {

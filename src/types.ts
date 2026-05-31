@@ -9,6 +9,14 @@ export interface SessionSummary {
   updatedAt: number;
 }
 
+export interface WorkspaceSummary {
+  workspaceHash: string;
+  workspaceName: string;
+  workspaceFolder?: string;
+  chatSessionsDir: string;
+  sessionCount: number;
+}
+
 export interface SerializableChatInputState {
   inputText?: string;
   [key: string]: unknown;
@@ -116,7 +124,7 @@ export interface ScanSummary {
   rootsScanned: string[];
   workspaceCount: number;
   sessionCount: number;
-  sessions: SessionSummary[];
+  workspaces: WorkspaceSummary[];
   warnings: ScanWarning[];
   scannedAt: number;
   loadedFromCache?: boolean;
