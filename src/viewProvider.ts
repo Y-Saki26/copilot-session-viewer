@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 import { mapChatSessionDocument } from './chatDocumentMapper';
 import { CopilotSessionScanner } from './logScanner';
+import { OutputLogger } from './outputLogger';
 import { ScanCacheRepository } from './scanCacheRepository';
 import { SessionPanel } from './sessionPanel';
 import { ScanSummary, SessionSummary, WorkspaceSummary } from './types';
@@ -17,12 +18,16 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
   private readonly workspaceLoads = new Map<string, Promise<void>>();
   private lastScan?: ScanSummary;
 
-  public constructor(private readonly context: vscode.ExtensionContext) {
+  public constructor(
+    private readonly context: vscode.ExtensionContext,
+    private readonly logger: OutputLogger
+  ) {
     this.cacheRepository = new ScanCacheRepository(context);
     this.sessionPanel = new SessionPanel(context);
   }
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void | Thenable<void> {
+    this.logger.info('Sessions view resolved.');
     this.view = webviewView;
     webviewView.webview.options = {
       enableScripts: true,
@@ -35,13 +40,18 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
 
   public async refresh(): Promise<void> {
     try {
+      const startedAt = Date.now();
+      this.logger.info('Starting workspace scan.');
       this.workspaceSessions.clear();
       this.workspaceLoads.clear();
       const scan = await this.scanner.scan(this.context);
       await this.cacheRepository.save(scan);
       this.lastScan = scan;
+      this.logger.info(`Workspace scan completed in ${Date.now() - startedAt}ms. Workspaces=${scan.workspaceCount}, Sessions=${scan.sessionCount}, Warnings=${scan.warnings.length}.`);
+      this.logWarnings('Scan', scan.warnings);
       this.postMessage({ type: 'scanResult', value: scan });
     } catch (error) {
+      this.logger.error('Workspace scan failed.', error);
       void vscode.window.showErrorMessage(this.errorMessage(error, 'Copilot Session Viewer failed to scan logs.'));
       this.postMessage({
         type: 'scanError',
@@ -52,13 +62,17 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
 
   private async initialize(): Promise<void> {
     try {
+      this.logger.info('Loading cached scan result.');
       const cachedScan = await this.cacheRepository.load();
       if (cachedScan) {
         this.lastScan = cachedScan;
+        this.logger.info(`Cached scan loaded. Workspaces=${cachedScan.workspaceCount}, Sessions=${cachedScan.sessionCount}.`);
         this.postMessage({ type: 'scanResult', value: cachedScan });
+      } else {
+        this.logger.info('No cached scan result was found.');
       }
     } catch (error) {
-      console.warn(this.errorMessage(error, 'Failed to load scan cache.'));
+      this.logger.warn(this.errorMessage(error, 'Failed to load scan cache.'));
     }
 
     await this.refresh();
@@ -71,14 +85,17 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
 
     switch (message.type) {
       case 'ready':
+        this.logger.info('Sessions webview is ready.');
         if (this.lastScan) {
           this.postMessage({ type: 'scanResult', value: this.lastScan });
         }
         return;
       case 'refresh':
+        this.logger.info('Refresh requested from webview.');
         void this.refresh();
         return;
       case 'openSettings':
+        this.logger.info('Settings requested from webview.');
         void vscode.commands.executeCommand(
           'workbench.action.openSettings',
           'copilotSessionViewer.workspaceStorageRoots'
@@ -86,6 +103,7 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
         return;
       case 'selectSession':
         if (this.isSessionSummary(message.session)) {
+          this.logger.info(`Session selected: ${message.session.title} (${message.session.sourcePath}).`);
           void this.openSession(message.session);
           return;
         }
@@ -93,12 +111,16 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
         if (typeof message.sourcePath === 'string') {
           const summary = this.findSessionSummary(message.sourcePath);
           if (summary) {
+            this.logger.info(`Session selected by path lookup: ${summary.title} (${summary.sourcePath}).`);
             void this.openSession(summary);
+          } else {
+            this.logger.warn(`Session selection ignored because metadata was not found for ${message.sourcePath}.`);
           }
         }
         return;
       case 'loadWorkspaceSessions':
         if (typeof message.chatSessionsDir === 'string') {
+          this.logger.info(`Workspace session list requested: ${message.chatSessionsDir}.`);
           void this.loadWorkspaceSessions(message.chatSessionsDir);
         }
         return;
@@ -148,13 +170,16 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async openSession(summary: SessionSummary): Promise<void> {
+    this.logger.info(`Restoring session log: ${summary.title} (${summary.sourcePath}).`);
     this.sessionPanel.showLoading(summary);
 
     try {
       const data = await this.scanner.readSessionData(summary.sourcePath);
       const document = mapChatSessionDocument(summary, data);
+      this.logger.info(`Session restored: ${document.title}. Turns=${document.turns.length}.`);
       this.sessionPanel.showDocument(document);
     } catch (error) {
+      this.logger.error(`Session restore failed for ${summary.sourcePath}.`, error);
       const message = this.errorMessage(error, 'Failed to restore session log.');
       this.sessionPanel.showError(summary.title, message);
       void vscode.window.showErrorMessage(message);
@@ -175,6 +200,7 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
   private async loadWorkspaceSessions(chatSessionsDir: string): Promise<void> {
     const cachedSessions = this.workspaceSessions.get(chatSessionsDir);
     if (cachedSessions) {
+      this.logger.info(`Workspace session list served from memory cache: ${chatSessionsDir}. Sessions=${cachedSessions.length}.`);
       this.postMessage({
         type: 'workspaceSessionsLoaded',
         value: {
@@ -188,12 +214,14 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
 
     const inflight = this.workspaceLoads.get(chatSessionsDir);
     if (inflight) {
+      this.logger.info(`Workspace session load already in progress: ${chatSessionsDir}.`);
       await inflight;
       return;
     }
 
     const workspace = this.findWorkspaceSummary(chatSessionsDir);
     if (!workspace) {
+      this.logger.warn(`Workspace session load skipped because metadata was not found: ${chatSessionsDir}.`);
       this.postMessage({
         type: 'workspaceSessionsError',
         value: {
@@ -216,8 +244,11 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
 
   private async loadWorkspaceSessionsInternal(workspace: WorkspaceSummary): Promise<void> {
     try {
+      const startedAt = Date.now();
       const result = await this.scanner.readWorkspaceSessions(workspace);
       this.workspaceSessions.set(workspace.chatSessionsDir, result.sessions);
+      this.logger.info(`Workspace session list loaded in ${Date.now() - startedAt}ms: ${workspace.workspaceName} (${workspace.chatSessionsDir}). Sessions=${result.sessions.length}, Warnings=${result.warnings.length}.`);
+      this.logWarnings(`Workspace ${workspace.workspaceName}`, result.warnings);
       this.postMessage({
         type: 'workspaceSessionsLoaded',
         value: {
@@ -227,6 +258,7 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
         }
       });
     } catch (error) {
+      this.logger.error(`Workspace session load failed: ${workspace.chatSessionsDir}.`, error);
       this.postMessage({
         type: 'workspaceSessionsError',
         value: {
@@ -258,6 +290,12 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
   private errorMessage(error: unknown, prefix: string): string {
     const suffix = error instanceof Error ? error.message : String(error);
     return `${prefix} ${suffix}`;
+  }
+
+  private logWarnings(scope: string, warnings: ReadonlyArray<{ location: string; message: string }>): void {
+    for (const warning of warnings) {
+      this.logger.warn(`${scope} warning: ${warning.message} (${warning.location})`);
+    }
   }
 }
 
