@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
 
+import { mapChatSessionDocument } from './chatDocumentMapper';
 import { CopilotSessionScanner } from './logScanner';
 import { ScanCacheRepository } from './scanCacheRepository';
-import { ScanSummary } from './types';
+import { SessionPanel } from './sessionPanel';
+import { ScanSummary, SessionSummary } from './types';
 
 export class SessionsViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewId = 'copilotSessionViewer.sessionsView';
@@ -10,10 +12,12 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
   private readonly scanner = new CopilotSessionScanner();
   private readonly cacheRepository: ScanCacheRepository;
+  private readonly sessionPanel: SessionPanel;
   private lastScan?: ScanSummary;
 
   public constructor(private readonly context: vscode.ExtensionContext) {
     this.cacheRepository = new ScanCacheRepository(context);
+    this.sessionPanel = new SessionPanel(context);
   }
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void | Thenable<void> {
@@ -76,6 +80,11 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
           'copilotSessionViewer.workspaceStorageRoots'
         );
         return;
+      case 'selectSession':
+        if (typeof message.sourcePath === 'string') {
+          void this.openSession(message.sourcePath);
+        }
+        return;
       default:
         return;
     }
@@ -99,13 +108,13 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
     <link rel="stylesheet" href="${styleUri}" />
     <title>Copilot Session Viewer</title>
   </head>
-  <body>
+  <body data-view="sessions">
     <div class="app">
       <header class="hero">
         <div>
           <p class="eyebrow">Mockup</p>
           <h1>Copilot Session Viewer</h1>
-          <p class="subtitle">Scan workspaceStorage and list session titles from Copilot Chat logs.</p>
+          <p class="subtitle">Scan workspaceStorage, choose a session from the list, and open the restored conversation in a main panel.</p>
         </div>
         <div class="actions">
           <button id="refreshButton">Refresh</button>
@@ -119,6 +128,32 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
     <script nonce="${nonce}" src="${scriptUri}"></script>
   </body>
 </html>`;
+  }
+
+  private async openSession(sourcePath: string): Promise<void> {
+    const summary = this.findSessionSummary(sourcePath);
+    if (!summary) {
+      const message = `Failed to find session metadata for ${sourcePath}.`;
+      this.sessionPanel.showError('Session not found', message);
+      void vscode.window.showErrorMessage(message);
+      return;
+    }
+
+    this.sessionPanel.showLoading(summary);
+
+    try {
+      const data = await this.scanner.readSessionData(summary.sourcePath);
+      const document = mapChatSessionDocument(summary, data);
+      this.sessionPanel.showDocument(document);
+    } catch (error) {
+      const message = this.errorMessage(error, 'Failed to restore session log.');
+      this.sessionPanel.showError(summary.title, message);
+      void vscode.window.showErrorMessage(message);
+    }
+  }
+
+  private findSessionSummary(sourcePath: string): SessionSummary | undefined {
+    return this.lastScan?.sessions.find((session) => session.sourcePath === sourcePath);
   }
 
   private isObject(value: unknown): value is Record<string, any> {
