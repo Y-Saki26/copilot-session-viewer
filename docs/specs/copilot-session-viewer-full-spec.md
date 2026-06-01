@@ -5,12 +5,12 @@
 - 本書は Copilot Session Viewer の現行実装をまとめるフル仕様書です。
 - リリース時は本書を最新実装に合わせて更新します。
 - `copilot-session-viewer-spec-vX.Y.Z.md` は、前回リリースからの差分だけを記録するリリースノートとして扱います。
-- 本書の内容は、現行コードベース、v0.0.3 実装時の作業ログ、git 履歴を基に整理しています。
+- 本書の内容は、現行コードベース、v0.0.3 以降の作業ログ、git 履歴を基に整理しています。
 
 ## 1. 製品概要
 
 - 拡張機能名: Copilot Session Viewer
-- 現在バージョン: 0.0.3
+- 現在バージョン: 0.0.4
 - 種別: VS Code 拡張機能
 - 目的: GitHub Copilot Chat の保存済みセッションログを読み取り、ワークスペース単位の一覧表示と、選択セッションの会話本文表示を行う
 - 想定データソース: VS Code の workspaceStorage 配下に保存された Copilot Chat セッションログ
@@ -309,6 +309,7 @@ session detail 表示時は軽量 summary ではなく、session file 全体を�
 
 - `markdown`
 - `thinking`
+- `subagent`
 - `tool`
 - `edit`
 - `unknown`
@@ -325,6 +326,9 @@ session detail 表示時は軽量 summary ではなく、session file 全体を�
   - text
   - done
 - `metadata.vscodeReasoningDone === true` で完了扱いにする
+- pin 対象 tool が thinking より先に現れた場合は synthetic thinking block を作る
+- 後続の thinking と pin 対象 tool は Markdown などの非 pin part が現れるまで同じ block に順序を保って追加する
+- 空 thinking marker は独立表示せず、block 自体は閉じない
 
 #### tool
 
@@ -337,6 +341,25 @@ session detail 表示時は軽量 summary ではなく、session file 全体を�
   - `isConfirmed.type === 0` なら denied
   - それ以外で `isComplete === true` なら completed
   - それ以外は running
+
+#### subagent
+
+- 親 subagent tool は `toolSpecificData.kind === subagent` かつ `subAgentInvocationId` がない tool
+- 親の `toolCallId` を effective ID とする専用の折りたたみ block に置き換える
+- 同じ effective ID を `subAgentInvocationId` に持つ child tool は block 内へ格納する
+- `codeblockUri.subAgentInvocationId` を持つ edit code block も block 内へ格納する
+- edit 用 `codeblockUri` の直後にある `textEditGroup` に ID がない場合は、annotation の `subAgentInvocationId` を引き継いで同じ block 内へ格納する。間にある `undoStop` は無視する
+- edit block の内部表現として挿入されたコードフェンスだけの Markdown (` ``` `) は本文として描画しない
+- 親 tool 自体は child tool として重複表示しない
+- parallel subagent は effective ID ごとに block を分離する
+- 深い nested subagent の子孫が root ancestor ID を持つ場合は root block 内へ畳み込む
+- 表示項目:
+  - `agentName`
+  - `description`
+  - `prompt`
+  - `result`
+  - `modelName`
+  - children
 
 #### edit
 
@@ -533,7 +556,7 @@ level:
 - scan cache は検索 index ではなく最後の scan snapshot
 - 初期表示高速化のため、session 一覧と本文は遅延読み込みに依存する
 
-## 17. v0.0.3 時点の主要モジュール
+## 17. v0.0.4 時点の主要モジュール
 
 - `src/extension.ts`: 拡張起動、provider と command 登録、logger 初期化
 - `src/viewProvider.ts`: sidebar Webview、cache / scan / 遅延読み込み / session 選択の調停

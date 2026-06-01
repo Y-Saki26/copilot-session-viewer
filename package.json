@@ -2,7 +2,7 @@
   "name": "copilot-session-viewer",
   "displayName": "Copilot Session Viewer",
   "description": "VS Code extension mockup for scanning Copilot Chat session logs.",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "publisher": "local",
   "license": "UNLICENSED",
   "engines": {
@@ -76,13 +76,16 @@
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "test": "npm run compile && node --test test/chatLogDecoder.test.js test/chatLogDecoder.integration.test.js",
+    "test": "npm run compile && node --test test/chatLogDecoder.test.js test/chatLogDecoder.integration.test.js test/chatDocumentMapper.test.js test/detailRendererShared.test.js",
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
     "prepackage:vsix": "npm run compile",
     "package:vsix": "vsce package --allow-missing-repository"
   },
   "dependencies": {
+    "dompurify": "^3.4.7",
+    "highlight.js": "^11.11.1",
+    "marked": "^18.0.4",
     "sql.js": "^1.14.1"
   },
   "devDependencies": {

@@ -233,6 +233,30 @@ VSCode 内部では kind `markdownContent` として扱われるが、**JSONL �
 
 上流型には `simpleToolInvocation`、`resources`、`search`、`modifiedFilesConfirmation`、`extensions`、`pullRequest` もある。サンプル未出現でも破棄せず、未知種別と同様に折りたたみ可能な詳細表示へフォールバックする。
 
+#### subagent dropdown の grouping
+
+現行 upstream の `ChatSubagentContentPart` は、subagent 呼び出しを通常 tool 行として描画せず、
+専用の折りたたみ dropdown に置き換える。静的履歴ビューでも同じ観察可能な構造を再現する。
+
+| part | dropdown の effective ID | 表示位置 |
+|---|---|---|
+| 親 subagent tool | `toolSpecificData.kind === "subagent"` かつ自身の `subAgentInvocationId` がない場合の `toolCallId` | dropdown 自体。通常 tool child として重複表示しない |
+| 子 tool | `subAgentInvocationId` | 同じ ID の dropdown 内 |
+| subagent 由来 edit code block | `codeblockUri.subAgentInvocationId`、または serialize 後の `<vscode_codeblock_uri ... subAgentInvocationId="...">` | 同じ ID の dropdown 内 |
+| subagent hook | `hook.subAgentInvocationId` | 同じ ID の dropdown 内 |
+
+- edit 用 `codeblockUri` と直後の `textEditGroup` は一つの edit block として扱う。`textEditGroup` 自体に
+  `subAgentInvocationId` がない場合は annotation の ID を継承する。間にある `undoStop` は無視する。
+- edit block の内部表現として挿入されたコードフェンスだけの Markdown (` ``` `) は、独立した Markdown block として表示しない。
+- dropdown 見出しは `agentName` または `"Subagent"` と `description` から作る。
+- `prompt` と `result` は dropdown 内でさらに折りたたみ可能な section として表示する。
+- child tool は通常の thinking container へ入れない。subagent dropdown を優先する。
+- parallel subagent は effective ID ごとに別 dropdown を作る。
+- Copilot CLI の深い nested subagent は、子孫 tool の `subAgentInvocationId` が root ancestor を指すように
+  復元される。この場合は階層ごとの dropdown を新設せず、upstream と同様に root dropdown へ畳み込む。
+- 親より先に child が現れる互換ログでは、effective ID だけで fallback dropdown を作り、親を後で読めた時点で
+  見出し、prompt、result を補完してよい。
+
 #### 代表的な toolId 一覧
 
 | toolId | 意味 |
@@ -752,9 +776,15 @@ part mapper と DOM renderer の間で次を行う。
 2. 保存順に response part を走査する。
 3. `inlineReference`、`codeblockUri`、`markdownVuln` は直前 Markdown へ合成する。
 4. 空の `thinking` は直前 thinking の終了マーカーとして処理する。
-5. 設定と Section 11.3 の pin 規則に基づき、tool / edit / hook / edit code block を thinking へまとめる。
-6. `codeCitations[]` と `result.errorDetails` を末尾に追加する。
-7. control part は位置情報を保持したまま DOM を生成しない。
+5. 親 subagent tool は effective ID の dropdown を作り、通常 tool 行としては重複表示しない。
+6. `subAgentInvocationId` を持つ child tool / hook / edit code block は、thinking より優先して同じ ID の
+   subagent dropdown へまとめる。
+7. active thinking がない状態で pin 対象 tool が現れた場合も synthetic thinking container を作る。
+8. synthetic container の後に thinking part が現れた場合は、新しい block を作らず同じ container へ追記する。
+9. 空 thinking は ID 更新の区切りとして扱うが、active container 自体は閉じない。
+10. 設定と Section 11.3 の pin 規則に基づき、残りの tool / edit / hook / edit code block を thinking へまとめる。
+11. `codeCitations[]` と `result.errorDetails` を末尾に追加する。
+12. control part は位置情報を保持したまま DOM を生成しない。
 
 ---
 
@@ -970,8 +1000,23 @@ thinking と後続 part の表示結果は次を満たすこと。実装時は�
 5. terminal tool を thinking 内へ表示するかは `terminalTools` 設定へ従う。
 6. tool hook は通常の tool 実行に関するものだけを thinking 内へ表示し、subagent hook は外側へ表示する。
 7. thinking と無関係な表示 part が現れた後は、後続 part を完了済み thinking の外側へ表示する。
+8. pin 対象 tool が thinking より先に現れた場合は synthetic thinking container を作る。
+9. synthetic container に続く thinking と pin 対象 tool は、Markdown などの非 pin part が現れるまで同じ
+   折りたたみ block に順序を保って追加する。
+10. 空 thinking marker だけでは container を閉じない。
 
-### 11.4 受け入れ確認
+### 11.4 subagent dropdown の grouping 要件
+
+1. 親 subagent tool は `toolCallId` を effective ID とする専用 dropdown に置き換え、親 tool 行を重複表示しない。
+2. `subAgentInvocationId` を持つ child tool は、同じ effective ID の dropdown 内へ表示する。
+3. `subAgentInvocationId` を持つ edit code block と hook も、同じ dropdown 内へ表示する。
+4. edit 用 `codeblockUri` の直後にある `textEditGroup` は annotation の ID を継承する。間にある `undoStop` は無視する。
+5. edit block 用のコードフェンスだけの Markdown は独立表示しない。
+6. subagent dropdown への関連付けは thinking への pin より優先する。
+7. parallel subagent は ID ごとに分離する。
+8. root ancestor ID を持つ深い child tool は root dropdown へ畳み込む。
+
+### 11.5 受け入れ確認
 
 初期マイルストーンでは、実データから少なくとも次を目視確認する。
 
@@ -981,7 +1026,8 @@ thinking と後続 part の表示結果は次を満たすこと。実装時は�
 | thinking + tool の session | 終了マーカーが空行として出ず、tool が適切に grouping される |
 | terminal tool | command、cwd、exit code、output |
 | todoList tool | status 別 To Do |
-| subagent tool | 親子 tool の grouping |
+| subagent tool | 親 tool が専用 dropdown になり、child tool、prompt、result が内側へ入る |
+| parallel / nested subagent | ID ごとの分離と root dropdown への畳み込み |
 | `inlineReference` | symbol / URI / Location のラベルが Markdown 内へ入る |
 | `codeblockUri` | 対応 code block にファイル名と edit 状態が付く |
 | `textEditGroup` | 読み取り専用 before/after diff。復元不能時のみ対象ファイルと edit 数へ fallback |
@@ -1004,4 +1050,6 @@ Microsoft の VS Code リポジトリは MIT License で公開されているが
 - [chatSessionOperationLog.ts](https://github.com/microsoft/vscode/blob/f067fb52337ad1dedb61fb81283bbd4de6b3d79e/src/vs/workbench/contrib/chat/common/model/chatSessionOperationLog.ts)
 - [annotations.ts](https://github.com/microsoft/vscode/blob/f067fb52337ad1dedb61fb81283bbd4de6b3d79e/src/vs/workbench/contrib/chat/common/widget/annotations.ts)
 - [chatListRenderer.ts](https://github.com/microsoft/vscode/blob/f067fb52337ad1dedb61fb81283bbd4de6b3d79e/src/vs/workbench/contrib/chat/browser/widget/chatListRenderer.ts)
+- [chatSubagentContentPart.ts](https://github.com/microsoft/vscode/blob/f067fb52337ad1dedb61fb81283bbd4de6b3d79e/src/vs/workbench/contrib/chat/browser/widget/chatContentParts/chatSubagentContentPart.ts)
 - [chatToolInvocationPart.ts](https://github.com/microsoft/vscode/blob/f067fb52337ad1dedb61fb81283bbd4de6b3d79e/src/vs/workbench/contrib/chat/browser/widget/chatContentParts/toolInvocationParts/chatToolInvocationPart.ts)
+- [runSubagentTool.ts](https://github.com/microsoft/vscode/blob/f067fb52337ad1dedb61fb81283bbd4de6b3d79e/src/vs/workbench/contrib/chat/common/tools/builtinTools/runSubagentTool.ts)

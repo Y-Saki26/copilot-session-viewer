@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 
+import { OutputLogger } from './outputLogger';
 import { ChatSessionDocument, SessionSummary } from './types';
 
 type SessionPanelState =
@@ -16,7 +17,10 @@ export class SessionPanel {
   };
   private ready = false;
 
-  public constructor(private readonly context: vscode.ExtensionContext) {}
+  public constructor(
+    private readonly context: vscode.ExtensionContext,
+    private readonly logger: OutputLogger
+  ) {}
 
   public showLoading(session: SessionSummary): void {
     this.state = {
@@ -62,7 +66,10 @@ export class SessionPanel {
       {
         enableScripts: true,
         retainContextWhenHidden: true,
-        localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'media')]
+        localResourceRoots: [
+          vscode.Uri.joinPath(this.context.extensionUri, 'media'),
+          vscode.Uri.joinPath(this.context.extensionUri, 'node_modules')
+        ]
       }
     );
 
@@ -82,6 +89,11 @@ export class SessionPanel {
     if (message.type === 'ready') {
       this.ready = true;
       this.postState();
+      return;
+    }
+
+    if (message.type === 'clientLog') {
+      this.logClientMessage(message.value);
     }
   }
 
@@ -112,7 +124,7 @@ export class SessionPanel {
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} https: data:; style-src ${webview.cspSource}; script-src ${webview.cspSource} 'nonce-${nonce}';" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="stylesheet" href="${styleUri}" />
     <title>Session Detail</title>
@@ -129,9 +141,39 @@ export class SessionPanel {
       <section id="detailSummary" class="summary"></section>
       <section id="detailTurns" class="detail-turns"></section>
     </div>
-    <script nonce="${nonce}" src="${scriptUri}"></script>
+    <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
   </body>
 </html>`;
+  }
+
+  private logClientMessage(value: unknown): void {
+    if (!isPlainObject(value) || typeof value.message !== 'string') {
+      return;
+    }
+
+    const level = value.level === 'info' || value.level === 'warn' || value.level === 'error'
+      ? value.level
+      : 'error';
+    const source = typeof value.source === 'string' ? value.source : 'webview';
+    const details = typeof value.details === 'string' ? value.details : undefined;
+    const message = `[webview:${source}] ${value.message}`;
+
+    if (level === 'info') {
+      this.logger.info(details ? `${message} ${details}` : message);
+      return;
+    }
+
+    if (level === 'warn') {
+      this.logger.warn(details ? `${message} ${details}` : message);
+      return;
+    }
+
+    if (details) {
+      this.logger.error(message, details);
+      return;
+    }
+
+    this.logger.error(message);
   }
 }
 
