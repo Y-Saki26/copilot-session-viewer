@@ -27,7 +27,8 @@
         {
           "type": "webview",
           "id": "copilotSessionViewer.sessionsView",
-          "name": "Sessions"
+          "name": "Sessions",
+          "icon": "media/activitybar.svg"
         }
       ]
     },
@@ -71,7 +72,7 @@
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "test": "npm run compile && node --test test/chatLogDecoder.test.js test/chatLogDecoder.integration.test.js test/chatDocumentMapper.test.js test/detailRendererShared.test.js test/sessionListShared.test.js test/workspaceStorageRoots.test.js",
+    "test": "npm run compile && node --test \"test/*.test.js\"",
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
     "prepackage:vsix": "npm run compile",
