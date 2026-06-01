@@ -5,12 +5,12 @@
 - 本書は Copilot Session Viewer の現行実装をまとめるフル仕様書です。
 - リリース時は本書を最新実装に合わせて更新します。
 - `copilot-session-viewer-spec-vX.Y.Z.md` は、前回リリースからの差分だけを記録するリリースノートとして扱います。
-- 本書の内容は、現行コードベース、v0.0.3 実装時の作業ログ、git 履歴を基に整理しています。
+- 本書の内容は、現行コードベース、v0.0.3 以降の作業ログ、git 履歴を基に整理しています。
 
 ## 1. 製品概要
 
 - 拡張機能名: Copilot Session Viewer
-- 現在バージョン: 0.0.3
+- 現在バージョン: 0.0.4
 - 種別: VS Code 拡張機能
 - 目的: GitHub Copilot Chat の保存済みセッションログを読み取り、ワークスペース単位の一覧表示と、選択セッションの会話本文表示を行う
 - 想定データソース: VS Code の workspaceStorage 配下に保存された Copilot Chat セッションログ
@@ -556,7 +556,7 @@ level:
 - scan cache は検索 index ではなく最後の scan snapshot
 - 初期表示高速化のため、session 一覧と本文は遅延読み込みに依存する
 
-## 17. v0.0.3 時点の主要モジュール
+## 17. v0.0.4 時点の主要モジュール
 
 - `src/extension.ts`: 拡張起動、provider と command 登録、logger 初期化
 - `src/viewProvider.ts`: sidebar Webview、cache / scan / 遅延読み込み / session 選択の調停
