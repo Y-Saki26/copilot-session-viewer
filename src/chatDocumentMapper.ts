@@ -19,6 +19,7 @@ import {
   ViewerReferenceItem,
   ViewerReferencesResponsePart,
   ViewerResponsePart,
+  ViewerSubagentResponsePart,
   ViewerThinkingResponsePart,
   ViewerToolResponsePart,
   ViewerUri,
@@ -73,21 +74,64 @@ function normalizeResponseParts(request: SerializableChatRequestData, requestId:
 
   let activeThinking: ViewerThinkingResponsePart | undefined;
   let currentMarkdown: ViewerMarkdownResponsePart | undefined;
+  let pendingEditAnnotation: { uri?: string; subAgentInvocationId?: string } | undefined;
+  const subagents = new Map<string, ViewerSubagentResponsePart>();
+  const syntheticThinkings = new Set<ViewerThinkingResponsePart>();
 
-  const flushMarkdown = (): void => {
-    if (!currentMarkdown) {
+  const finalizeActiveThinking = (): void => {
+    if (!activeThinking) {
       return;
     }
 
-    if (currentMarkdown.text) {
-      normalized.push(currentMarkdown);
-    }
+    const thinking = activeThinking;
+    activeThinking = undefined;
 
-    currentMarkdown = undefined;
+    if (
+      syntheticThinkings.has(thinking)
+      && thinking.title === 'Thinking'
+      && !thinking.text.trim()
+      && thinking.children.length === 1
+      && thinking.children[0].type === 'tool'
+    ) {
+      const index = normalized.indexOf(thinking);
+      if (index >= 0) {
+        normalized.splice(index, 1, thinking.children[0]);
+      }
+    }
   };
 
-  const pushPart = (part: ViewerResponsePart, insideThinking: boolean): void => {
-    flushMarkdown();
+  const getOrCreateSubagent = (
+    subAgentInvocationId: string,
+    parentTool?: ViewerToolResponsePart
+  ): ViewerSubagentResponsePart => {
+    const existing = subagents.get(subAgentInvocationId);
+    if (existing) {
+      if (parentTool) {
+        updateSubagentPart(existing, parentTool);
+      }
+      return existing;
+    }
+
+    const subagent = createSubagentPart(
+      `${requestId}:subagent:${subAgentInvocationId}`,
+      subAgentInvocationId,
+      parentTool
+    );
+    subagents.set(subAgentInvocationId, subagent);
+    normalized.push(subagent);
+    return subagent;
+  };
+
+  const appendPart = (
+    part: ViewerResponsePart,
+    insideThinking: boolean,
+    subAgentInvocationId?: string
+  ): void => {
+    if (subAgentInvocationId) {
+      finalizeActiveThinking();
+      getOrCreateSubagent(subAgentInvocationId).children.push(part);
+      return;
+    }
 
     if (insideThinking && activeThinking) {
       activeThinking.children.push(part);
@@ -95,20 +139,57 @@ function normalizeResponseParts(request: SerializableChatRequestData, requestId:
     }
 
     if (part.type !== 'thinking') {
-      activeThinking = undefined;
+      finalizeActiveThinking();
     }
 
     normalized.push(part);
+  };
+
+  const flushMarkdown = (): void => {
+    if (!currentMarkdown) {
+      return;
+    }
+
+    const markdown = currentMarkdown;
+    currentMarkdown = undefined;
+
+    if ((markdown.text || markdown.codeBlocks?.length) && !isFenceOnlyMarkdown(markdown.text)) {
+      appendPart(markdown, false, markdown.subAgentInvocationId);
+    }
+  };
+
+  const pushPart = (part: ViewerResponsePart, insideThinking: boolean, subAgentInvocationId?: string): void => {
+    flushMarkdown();
+    appendPart(part, insideThinking, subAgentInvocationId);
+  };
+
+  const appendPinnedPart = (
+    part: ViewerResponsePart,
+    source: Record<string, unknown>,
+    subAgentInvocationId?: string
+  ): void => {
+    flushMarkdown();
+
+    if (subAgentInvocationId) {
+      appendPart(part, false, subAgentInvocationId);
+      return;
+    }
+
+    if (!activeThinking) {
+      activeThinking = createSyntheticThinkingPart(`${part.id}:synthetic:thinking`, source);
+      syntheticThinkings.add(activeThinking);
+      normalized.push(activeThinking);
+    }
+
+    updateThinkingTitle(activeThinking, source);
+    activeThinking.children.push(part);
   };
 
   for (let index = 0; index < response.length; index += 1) {
     const part = response[index];
 
     if (typeof part === 'string') {
-      if (activeThinking) {
-        activeThinking = undefined;
-      }
-
+      finalizeActiveThinking();
       currentMarkdown = appendMarkdownFragment(currentMarkdown, requestId, index, part, part);
       continue;
     }
@@ -123,10 +204,7 @@ function normalizeResponseParts(request: SerializableChatRequestData, requestId:
     if (!kind) {
       const markdownText = readResponseTextFragment(part.value);
       if (markdownText !== undefined) {
-        if (activeThinking) {
-          activeThinking = undefined;
-        }
-
+        finalizeActiveThinking();
         currentMarkdown = appendMarkdownFragment(currentMarkdown, requestId, index, markdownText, part);
         continue;
       }
@@ -141,12 +219,18 @@ function normalizeResponseParts(request: SerializableChatRequestData, requestId:
         if (!thinkingPart) {
           if (activeThinking) {
             activeThinking.done = true;
+            updateThinkingTitle(activeThinking, part);
           }
           continue;
         }
 
-        pushPart(thinkingPart, false);
-        activeThinking = thinkingPart;
+        flushMarkdown();
+        if (activeThinking) {
+          mergeThinkingPart(activeThinking, thinkingPart);
+        } else {
+          normalized.push(thinkingPart);
+          activeThinking = thinkingPart;
+        }
         continue;
       }
       case 'toolInvocationSerialized': {
@@ -155,25 +239,54 @@ function normalizeResponseParts(request: SerializableChatRequestData, requestId:
         }
 
         const toolPart = createToolPart(createPartId(requestId, index, kind), part);
-        pushPart(toolPart, shouldAttachToolToThinking(part, activeThinking));
+        const subAgentInvocationId = getToolSubagentId(part);
+        if (subAgentInvocationId) {
+          flushMarkdown();
+          finalizeActiveThinking();
+          const subagent = getOrCreateSubagent(subAgentInvocationId, isParentSubagentTool(part) ? toolPart : undefined);
+          if (!isParentSubagentTool(part)) {
+            subagent.children.push(toolPart);
+          }
+          continue;
+        }
+
+        if (shouldPinToolToThinking(part)) {
+          appendPinnedPart(toolPart, part);
+        } else {
+          pushPart(toolPart, false);
+        }
         continue;
       }
       case 'textEditGroup': {
         const editPart = createEditPart(createPartId(requestId, index, kind), part);
-        pushPart(editPart, Boolean(activeThinking));
+        const editUri = extractUriLabel(part.uri);
+        const inheritedSubagentId = pendingEditAnnotation
+          && (!pendingEditAnnotation.uri || !editUri || pendingEditAnnotation.uri === editUri)
+          ? pendingEditAnnotation.subAgentInvocationId
+          : findLastMarkdownEditSubagentId(currentMarkdown);
+        const subAgentInvocationId = readString(part.subAgentInvocationId) ?? inheritedSubagentId;
+        pendingEditAnnotation = undefined;
+        if (activeThinking || subAgentInvocationId) {
+          appendPinnedPart(editPart, part, subAgentInvocationId);
+        } else {
+          pushPart(editPart, false);
+        }
         continue;
       }
       case 'inlineReference': {
-        if (activeThinking) {
-          activeThinking = undefined;
-        }
-
+        finalizeActiveThinking();
         currentMarkdown = appendInlineReference(currentMarkdown, requestId, index, part);
         continue;
       }
       case 'codeblockUri': {
         if (currentMarkdown) {
           attachCodeBlockReference(currentMarkdown, part);
+          pendingEditAnnotation = part.isEdit === true
+            ? {
+                uri: extractUriLabel(part.uri),
+                subAgentInvocationId: readString(part.subAgentInvocationId)
+              }
+            : undefined;
         } else {
           pushPart(createUnknownPart(createPartId(requestId, index, kind), kind, part), false);
         }
@@ -239,13 +352,17 @@ function normalizeResponseParts(request: SerializableChatRequestData, requestId:
       case 'clearToPreviousToolInvocation':
         continue;
       default:
-        pushPart(createUnknownPart(createPartId(requestId, index, kind), kind, part), false);
+        pushPart(
+          createUnknownPart(createPartId(requestId, index, kind), kind, part),
+          false,
+          readString(part.subAgentInvocationId)
+        );
         continue;
     }
   }
 
   flushMarkdown();
-  activeThinking = undefined;
+  finalizeActiveThinking();
 
   const codeCitations = mapReferenceItems(request.codeCitations);
   if (codeCitations.length > 0) {
@@ -309,8 +426,15 @@ function appendMarkdownFragment(
   raw: unknown
 ): ViewerMarkdownResponsePart {
   const next = current ?? createMarkdownPart(createPartId(requestId, index, 'markdown'), '', raw);
-  next.text += text;
+  const annotatedText = extractCodeBlockAnnotations(text);
+  next.text += annotatedText.text;
   next.rawText = appendRawText(next.rawText, raw);
+
+  if (annotatedText.codeBlocks.length > 0) {
+    next.codeBlocks ??= [];
+    next.codeBlocks.push(...annotatedText.codeBlocks);
+    next.subAgentInvocationId ??= annotatedText.codeBlocks.find((codeBlock) => codeBlock.subAgentInvocationId)?.subAgentInvocationId;
+  }
 
   if (isPlainObject(raw)) {
     next.baseUri ??= extractUri(raw.baseUri);
@@ -340,12 +464,34 @@ function appendInlineReference(
 
 function attachCodeBlockReference(current: ViewerMarkdownResponsePart, part: Record<string, unknown>): void {
   const label = extractUriLabel(part.uri) ?? 'Code block';
+  const subAgentInvocationId = readString(part.subAgentInvocationId);
   current.codeBlocks ??= [];
   current.codeBlocks.push({
     label,
-    isEdit: part.isEdit === true
+    isEdit: part.isEdit === true,
+    ...(subAgentInvocationId ? { subAgentInvocationId } : {})
   });
+  current.subAgentInvocationId ??= subAgentInvocationId;
   current.rawText = appendRawText(current.rawText, part);
+}
+
+function isFenceOnlyMarkdown(text: string): boolean {
+  return text.replace(/```[^\r\n]*/g, '').trim().length === 0;
+}
+
+function findLastMarkdownEditSubagentId(markdown: ViewerMarkdownResponsePart | undefined): string | undefined {
+  const codeBlocks = markdown?.codeBlocks;
+  if (!codeBlocks) {
+    return undefined;
+  }
+
+  for (let index = codeBlocks.length - 1; index >= 0; index -= 1) {
+    if (codeBlocks[index].isEdit && codeBlocks[index].subAgentInvocationId) {
+      return codeBlocks[index].subAgentInvocationId;
+    }
+  }
+
+  return undefined;
 }
 
 function createMarkdownPart(id: string, text: string, raw: unknown): ViewerMarkdownResponsePart {
@@ -368,10 +514,50 @@ function createThinkingPart(id: string, part: Record<string, unknown>): ViewerTh
     id,
     text,
     title: extractThinkingTitle(part, text),
+    generatedTitle: readString(part.generatedTitle),
     done: true,
     children: [],
     rawText: stringifyRaw(part)
   };
+}
+
+function createSyntheticThinkingPart(id: string, source: Record<string, unknown>): ViewerThinkingResponsePart {
+  return {
+    type: 'thinking',
+    id,
+    text: '',
+    title: readString(source.generatedTitle) ?? 'Thinking',
+    generatedTitle: readString(source.generatedTitle),
+    done: true,
+    children: []
+  };
+}
+
+function mergeThinkingPart(target: ViewerThinkingResponsePart, incoming: ViewerThinkingResponsePart): void {
+  updateThinkingTitle(target, incoming);
+  target.done = target.done || incoming.done;
+  target.rawText = appendRawText(target.rawText, incoming.rawText ?? incoming.text);
+
+  if (!incoming.text) {
+    return;
+  }
+
+  if (target.children.length === 0) {
+    target.text = target.text ? `${target.text}\n\n${incoming.text}` : incoming.text;
+    return;
+  }
+
+  target.children.push(createMarkdownPart(`${incoming.id}:content`, incoming.text, incoming.rawText ?? incoming.text));
+}
+
+function updateThinkingTitle(target: ViewerThinkingResponsePart, source: Record<string, unknown> | ViewerThinkingResponsePart): void {
+  const generatedTitle = readString(source.generatedTitle);
+  if (generatedTitle) {
+    target.title = generatedTitle;
+    target.generatedTitle = generatedTitle;
+  } else if (target.title === 'Thinking' && source.type === 'thinking') {
+    target.title = readString(source.title) ?? target.title;
+  }
 }
 
 function createToolPart(id: string, part: Record<string, unknown>): ViewerToolResponsePart {
@@ -380,10 +566,48 @@ function createToolPart(id: string, part: Record<string, unknown>): ViewerToolRe
     id,
     title: extractToolTitle(part),
     toolId: readString(part.toolId),
+    toolCallId: readString(part.toolCallId),
+    subAgentInvocationId: readString(part.subAgentInvocationId),
     status: extractToolStatus(part),
     detail: extractToolDetail(part),
     rawText: stringifyRaw(part)
   };
+}
+
+function createSubagentPart(
+  id: string,
+  subAgentInvocationId: string,
+  parentTool?: ViewerToolResponsePart
+): ViewerSubagentResponsePart {
+  const subagent: ViewerSubagentResponsePart = {
+    type: 'subagent',
+    id,
+    subAgentInvocationId,
+    title: 'Subagent: Running subagent',
+    children: []
+  };
+
+  if (parentTool) {
+    updateSubagentPart(subagent, parentTool);
+  }
+
+  return subagent;
+}
+
+function updateSubagentPart(subagent: ViewerSubagentResponsePart, parentTool: ViewerToolResponsePart): void {
+  const detail = parentTool.detail?.kind === 'subagent' ? parentTool.detail : undefined;
+  subagent.agentName = detail?.agentName;
+  subagent.description = detail?.description;
+  subagent.prompt = detail?.prompt;
+  subagent.result = detail?.result;
+  subagent.modelName = detail?.modelName;
+  subagent.title = formatSubagentTitle(detail?.agentName, detail?.description);
+  subagent.rawText = parentTool.rawText;
+}
+
+function formatSubagentTitle(agentName: string | undefined, description: string | undefined): string {
+  const prefix = agentName ? `${agentName.charAt(0).toUpperCase()}${agentName.slice(1)}` : 'Subagent';
+  return `${prefix}: ${description ?? 'Running subagent'}`;
 }
 
 function createEditPart(id: string, part: Record<string, unknown>): ViewerEditResponsePart {
@@ -849,18 +1073,68 @@ function escapeMarkdownLabel(value: string): string {
   return value.replace(/([\[\]])/g, '\\$1');
 }
 
-function shouldAttachToolToThinking(part: Record<string, unknown>, activeThinking: ViewerThinkingResponsePart | undefined): boolean {
-  if (!activeThinking) {
+function extractCodeBlockAnnotations(text: string): {
+  text: string;
+  codeBlocks: NonNullable<ViewerMarkdownResponsePart['codeBlocks']>;
+} {
+  const codeBlocks: NonNullable<ViewerMarkdownResponsePart['codeBlocks']> = [];
+  const normalizedText = text.replace(
+    /<vscode_codeblock_uri([^>]*)>([\s\S]*?)<\/vscode_codeblock_uri>/g,
+    (_match, attributes: string, uriText: string) => {
+      const encodedSubAgentInvocationId = /\bsubAgentInvocationId="([^"]*)"/.exec(attributes)?.[1];
+      const subAgentInvocationId = decodeUriComponentSafely(encodedSubAgentInvocationId);
+      codeBlocks.push({
+        label: uriText.trim() || 'Code block',
+        isEdit: /\bisEdit\b/.test(attributes),
+        ...(subAgentInvocationId ? { subAgentInvocationId } : {})
+      });
+      return '';
+    }
+  );
+
+  return { text: normalizedText, codeBlocks };
+}
+
+function decodeUriComponentSafely(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function isParentSubagentTool(part: Record<string, unknown>): boolean {
+  const toolSpecificData = isPlainObject(part.toolSpecificData) ? part.toolSpecificData : undefined;
+  return readString(toolSpecificData?.kind) === 'subagent' && !readString(part.subAgentInvocationId);
+}
+
+function getToolSubagentId(part: Record<string, unknown>): string | undefined {
+  return isParentSubagentTool(part)
+    ? readString(part.toolCallId)
+    : readString(part.subAgentInvocationId);
+}
+
+function shouldPinToolToThinking(part: Record<string, unknown>): boolean {
+  if (getToolSubagentId(part)) {
     return false;
   }
 
   const toolId = readString(part.toolId) ?? '';
-  if (toolId.startsWith('mcp_')) {
+  const source = isPlainObject(part.source) ? part.source : undefined;
+  if (toolId.startsWith('mcp_') || readString(source?.type) === 'mcp') {
     return false;
   }
 
-  const toolSpecificData = isPlainObject(part.toolSpecificData) ? part.toolSpecificData : undefined;
-  return readString(toolSpecificData?.kind) !== 'subagent';
+  const normalizedToolId = toolId.toLowerCase();
+  return (
+    !normalizedToolId.includes('mermaid')
+    && toolId !== 'copilot_askQuestions'
+    && toolId !== 'vscode_askQuestions'
+  );
 }
 
 function isToolHidden(part: Record<string, unknown>): boolean {

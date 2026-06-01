@@ -109,12 +109,14 @@ export interface ViewerReferenceItem {
 export interface ViewerMarkdownCodeBlock {
   label: string;
   isEdit: boolean;
+  subAgentInvocationId?: string;
 }
 
 export interface ViewerMarkdownResponsePart {
   type: 'markdown';
   id: string;
   text: string;
+  subAgentInvocationId?: string;
   baseUri?: ViewerUri;
   uris?: Record<string, ViewerUri>;
   codeBlocks?: ViewerMarkdownCodeBlock[];
@@ -126,6 +128,7 @@ export interface ViewerThinkingResponsePart {
   id: string;
   text: string;
   title: string;
+  generatedTitle?: string;
   done: boolean;
   children: ViewerResponsePart[];
   rawText?: string;
@@ -206,8 +209,24 @@ export interface ViewerToolResponsePart {
   id: string;
   title: string;
   toolId?: string;
+  toolCallId?: string;
+  subAgentInvocationId?: string;
   status: 'completed' | 'running' | 'denied';
   detail?: ViewerToolDetail;
+  rawText?: string;
+}
+
+export interface ViewerSubagentResponsePart {
+  type: 'subagent';
+  id: string;
+  subAgentInvocationId: string;
+  title: string;
+  agentName?: string;
+  description?: string;
+  prompt?: string;
+  result?: string;
+  modelName?: string;
+  children: ViewerResponsePart[];
   rawText?: string;
 }
 
@@ -323,6 +342,7 @@ export interface ViewerUnknownResponsePart {
 export type ViewerResponsePart =
   | ViewerMarkdownResponsePart
   | ViewerThinkingResponsePart
+  | ViewerSubagentResponsePart
   | ViewerToolResponsePart
   | ViewerEditResponsePart
   | ViewerProgressTaskResponsePart

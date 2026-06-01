@@ -353,6 +353,15 @@ button.secondary {
   background: color-mix(in srgb, var(--vscode-editor-background) 78%, var(--surface));
 }
 
+.subagent-part {
+  border-color: color-mix(in srgb, var(--accent) 52%, var(--border));
+}
+
+.subagent-children {
+  padding-left: 12px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 32%, var(--border));
+}
+
 .attachments {
   display: flex;
   flex-wrap: wrap;
@@ -588,18 +597,28 @@ button.secondary {
   gap: 12px;
 }
 
-.raw-block {
+.raw-block,
+.subagent-section {
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
 }
 
-.raw-block > summary {
+.raw-block > summary,
+.subagent-section > summary {
   list-style: none;
   cursor: pointer;
   padding: 10px 12px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.subagent-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.subagent-section > .markdown-content {
+  padding: 0 12px 12px;
 }
 
 .raw-json {

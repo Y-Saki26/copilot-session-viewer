@@ -487,6 +487,8 @@ function renderResponsePart(part) {
       return '<section class="response-part markdown-part">' + renderMarkdownToHtml(part.text, part.codeBlocks) + '</section>';
     case 'thinking':
       return renderThinkingPart(part);
+    case 'subagent':
+      return renderSubagentPart(part);
     case 'tool':
       return renderToolPart(part);
     case 'edit':
@@ -528,6 +530,36 @@ function renderThinkingPart(part) {
     '<div class="markdown-content">' + renderMarkdownToHtml(part.text) + '</div>',
     Array.isArray(part.children) && part.children.length > 0 ? '<div class="nested-parts">' + part.children.map(renderResponsePart).join('') + '</div>' : '',
     '</div>',
+    '</details>'
+  ].join('');
+}
+
+function renderSubagentPart(part) {
+  return [
+    '<details class="response-part subagent-part">',
+    '<summary class="part-summary">',
+    '<span class="part-kind">Subagent</span>',
+    '<span class="part-title">' + escapeHtml(part.title) + '</span>',
+    '<span class="part-status">✓</span>',
+    '</summary>',
+    '<div class="part-body">',
+    part.modelName ? '<p class="part-meta">Model: ' + escapeHtml(part.modelName) + '</p>' : '',
+    part.prompt ? renderSubagentSection('Prompt', part.prompt) : '',
+    Array.isArray(part.children) && part.children.length > 0
+      ? '<div class="nested-parts subagent-children">' + part.children.map(renderResponsePart).join('') + '</div>'
+      : '<p class="muted-copy">No nested subagent activity was serialized.</p>',
+    part.result ? renderSubagentSection('Result', part.result) : '',
+    part.rawText ? renderRawBlock(part.rawText) : '',
+    '</div>',
+    '</details>'
+  ].join('');
+}
+
+function renderSubagentSection(title, text) {
+  return [
+    '<details class="subagent-section">',
+    '<summary>' + escapeHtml(title) + '</summary>',
+    '<div class="markdown-content">' + renderMarkdownToHtml(text) + '</div>',
     '</details>'
   ].join('');
 }
