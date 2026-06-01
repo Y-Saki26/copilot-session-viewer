@@ -157,7 +157,7 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
     <div class="app">
       <header class="hero">
         <div>
-          <p class="eyebrow">Mockup</p>
+          <p class="eyebrow">Local Chat History</p>
           <h1>Copilot Session Viewer</h1>
           <p class="subtitle">Scan workspaceStorage, choose a session from the list, and open the restored conversation in a main panel.</p>
         </div>

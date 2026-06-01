@@ -1,7 +1,7 @@
 {
   "name": "copilot-session-viewer",
   "displayName": "Copilot Session Viewer",
-  "description": "VS Code extension mockup for scanning Copilot Chat session logs.",
+  "description": "VS Code extension for browsing saved Copilot Chat session logs.",
   "version": "0.0.4",
   "publisher": "local",
   "license": "UNLICENSED",

@@ -6,7 +6,7 @@
 
 Copilot Session Viewer は、GitHub Copilot Chat のセッションログを読み取り、VS Code の Activity Bar 内 Webview に一覧表示する VS Code 拡張です。
 
-現状はモックアップ段階です。`workspaceStorage` 配下の `chatSessions` を走査し、ワークスペースごとにセッションタイトルをまとめて表示します。起動時は SQLite キャッシュを即時表示し、その後バックグラウンドで再スキャンします。
+`workspaceStorage` 配下の `chatSessions` を走査し、ワークスペースごとにセッションタイトルをまとめて表示します。起動時は SQLite キャッシュを即時表示し、その後バックグラウンドで再スキャンします。
 
 ## 主要構成
 
@@ -57,6 +57,7 @@ Copilot Session Viewer は、GitHub Copilot Chat のセッションログを読�
 
 - JSON snapshot は `sessionId`, `customTitle`, `creationDate`, `inputState.inputText` を見る。
 - JSONL は `kind === 0` の初期状態と、`kind === 1` の `customTitle` / `inputState.inputText` 更新を読む。
+- 一覧 summary の `isEmpty` は JSONL mutation log を全行復元した最終状態の `requests` 配列から判定する。サイドバーは既定で空セッションを隠し、チェックボックスで表示を切り替える。
 - タイトルは `customTitle` を優先し、なければ最初の入力行を 50 文字以内に切り詰める。さらに無ければファイル名を使う。
 - パース失敗は全体を止めず `warnings` に積む設計。
 
