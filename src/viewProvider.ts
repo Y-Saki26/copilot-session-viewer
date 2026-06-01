@@ -165,6 +165,10 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
           <button id="refreshButton">Refresh</button>
           <button id="settingsButton" class="secondary">Settings</button>
         </div>
+        <label class="toggle">
+          <input id="showEmptySessionsCheckbox" type="checkbox" />
+          <span>Show empty sessions</span>
+        </label>
       </header>
       <section id="summary" class="summary"></section>
       <section id="warnings" class="warnings"></section>
@@ -283,6 +287,7 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
     return this.isObject(value)
       && typeof value.id === 'string'
       && typeof value.title === 'string'
+      && typeof value.isEmpty === 'boolean'
       && typeof value.workspaceHash === 'string'
       && typeof value.workspaceName === 'string'
       && typeof value.sourcePath === 'string'

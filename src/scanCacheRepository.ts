@@ -320,6 +320,7 @@ export class ScanCacheRepository {
             id: row.session_id,
             workspaceHash: row.workspace_hash,
             title: row.title,
+            isEmpty: false,
             workspaceName: row.workspace_name,
             workspaceFolder: typeof row.workspace_folder === 'string' ? row.workspace_folder : undefined,
             sourcePath: row.source_path,

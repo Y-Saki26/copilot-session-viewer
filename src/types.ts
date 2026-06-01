@@ -1,6 +1,7 @@
 export interface SessionSummary {
   id: string;
   title: string;
+  isEmpty: boolean;
   workspaceHash: string;
   workspaceName: string;
   workspaceFolder?: string;

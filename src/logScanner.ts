@@ -2,7 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
-import { ChatLogDecoder, decodeChatLogFile } from './chatLogDecoder';
+import { ChatLogDecoder, decodeChatLogFile, hasStoredRequests } from './chatLogDecoder';
 import { ScanSummary, ScanWarning, SessionSummary, WorkspaceSummary } from './types';
 import { getWorkspaceStorageRoots } from './workspaceStorageRoots';
 
@@ -213,6 +213,9 @@ export class CopilotSessionScanner {
       const parsed = sessionFile.endsWith('.jsonl')
         ? this.parseJsonLines(contents, sessionFile, warnings)
         : this.parseJsonSnapshot(contents, sessionFile, warnings);
+      const data = sessionFile.endsWith('.jsonl')
+        ? this.chatLogDecoder.decodeJsonLines(contents).data
+        : this.chatLogDecoder.decodeJsonSnapshot(contents);
 
       if (!parsed) {
         return undefined;
@@ -223,6 +226,7 @@ export class CopilotSessionScanner {
       return {
         id: parsed.id,
         title,
+        isEmpty: !hasStoredRequests(data),
         workspaceHash: workspace.workspaceHash,
         workspaceName: workspace.workspaceName,
         workspaceFolder: workspace.workspaceFolder,

@@ -4,12 +4,14 @@ import {
   normalizeDetailRendererDependencies,
   renderMarkdownToHtml as renderMarkdownFragment
 } from './detailRendererShared.mjs';
+import { filterVisibleSessions } from './sessionListShared.mjs';
 
 const vscode = acquireVsCodeApi();
 const persistedState = vscode.getState() || {};
 const state = {
   expandedWorkspaces: isPlainObject(persistedState.expandedWorkspaces) ? persistedState.expandedWorkspaces : {},
-  selectedSessionPath: typeof persistedState.selectedSessionPath === 'string' ? persistedState.selectedSessionPath : undefined
+  selectedSessionPath: typeof persistedState.selectedSessionPath === 'string' ? persistedState.selectedSessionPath : undefined,
+  showEmptySessions: persistedState.showEmptySessions === true
 };
 let markedLibrary;
 let domPurifyLibrary;
@@ -34,13 +36,16 @@ function initSessionsView() {
 
   const refreshButton = document.getElementById('refreshButton');
   const settingsButton = document.getElementById('settingsButton');
+  const showEmptySessionsCheckbox = document.getElementById('showEmptySessionsCheckbox');
   const summary = document.getElementById('summary');
   const warnings = document.getElementById('warnings');
   const sessions = document.getElementById('sessions');
 
-  if (!refreshButton || !settingsButton || !summary || !warnings || !sessions) {
+  if (!refreshButton || !settingsButton || !showEmptySessionsCheckbox || !summary || !warnings || !sessions) {
     return;
   }
+
+  showEmptySessionsCheckbox.checked = state.showEmptySessions;
 
   refreshButton.addEventListener('click', function () {
     resetWorkspaceState();
@@ -50,6 +55,14 @@ function initSessionsView() {
 
   settingsButton.addEventListener('click', function () {
     vscode.postMessage({ type: 'openSettings' });
+  });
+
+  showEmptySessionsCheckbox.addEventListener('change', function () {
+    state.showEmptySessions = showEmptySessionsCheckbox.checked;
+    persistState();
+    if (currentScan) {
+      renderScan(currentScan);
+    }
   });
 
   window.addEventListener('message', function (event) {
@@ -113,7 +126,7 @@ function initSessionsView() {
       metric('Source', scan.loadedFromCache ? 'Cache' : 'Live'),
       metric('Roots', String(scan.rootsScanned.length)),
       metric('Workspaces', String(scan.workspaceCount)),
-      metric('Sessions', String(scan.sessionCount)),
+      metric('Stored logs', String(scan.sessionCount)),
       metric('Scanned', formatDate(scan.scannedAt)),
       '</div>',
       '<div class="card roots"><strong>Roots</strong><ul>' + scan.rootsScanned.map(function (root) {
@@ -138,6 +151,7 @@ function initSessionsView() {
       const workspaceKey = workspace.chatSessionsDir;
       const isExpanded = Boolean(state.expandedWorkspaces[workspaceKey]);
       const loadedSessions = workspaceSessions.get(workspaceKey);
+      const visibleSessions = filterVisibleSessions(loadedSessions, state.showEmptySessions);
       const loadWarnings = workspaceWarnings.get(workspaceKey) || [];
       const loadError = workspaceErrors.get(workspaceKey);
       const isLoading = loadingWorkspaces.has(workspaceKey);
@@ -152,12 +166,12 @@ function initSessionsView() {
         '</div>',
         '<span class="workspace-chevron" aria-hidden="true">▾</span>',
         '<div class="workspace-stats">',
-        '<strong>' + escapeHtml(String(workspace.sessionCount)) + '</strong>',
-        '<span>Load on expand</span>',
+        '<strong>' + escapeHtml(String(Array.isArray(loadedSessions) ? visibleSessions.length : workspace.sessionCount)) + '</strong>',
+        '<span>' + (Array.isArray(loadedSessions) ? 'Shown sessions' : 'Stored logs') + '</span>',
         '</div>',
         '</summary>',
         '<div class="list">',
-        renderWorkspaceBody(workspace, loadedSessions, loadWarnings, loadError, isLoading),
+        renderWorkspaceBody(workspace, loadedSessions, visibleSessions, loadWarnings, loadError, isLoading),
         '</div>',
         '</details>'
       ].join('');
@@ -167,7 +181,7 @@ function initSessionsView() {
     attachSessionSelectionListeners(sessions, findSessionSummaryBySourcePath);
   }
 
-  function renderWorkspaceBody(workspace, loadedSessions, loadWarnings, loadError, isLoading) {
+  function renderWorkspaceBody(workspace, loadedSessions, visibleSessions, loadWarnings, loadError, isLoading) {
     if (isLoading) {
       return '<div class="card">Loading session summaries...</div>';
     }
@@ -180,9 +194,11 @@ function initSessionsView() {
       return '<div class="card">Expand this workspace to load its session list.</div>';
     }
 
-    const sessionListMarkup = loadedSessions.length === 0
-      ? '<div class="card empty">No readable session files were found in this workspace.</div>'
-      : loadedSessions.map(function (session) {
+    const sessionListMarkup = visibleSessions.length === 0
+      ? '<div class="card empty">' + (loadedSessions.length === 0
+        ? 'No readable session files were found in this workspace.'
+        : 'No sessions with stored requests were found in this workspace.') + '</div>'
+      : visibleSessions.map(function (session) {
         const selectedClass = session.sourcePath === state.selectedSessionPath ? ' selected' : '';
         return [
           '<button type="button" class="session-card' + selectedClass + '" data-source-path="' + escapeHtml(session.sourcePath) + '">',
@@ -831,7 +847,8 @@ function formatDate(timestamp) {
 function persistState() {
   vscode.setState({
     expandedWorkspaces: state.expandedWorkspaces,
-    selectedSessionPath: state.selectedSessionPath
+    selectedSessionPath: state.selectedSessionPath,
+    showEmptySessions: state.showEmptySessions
   });
 }
 
