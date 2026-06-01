@@ -260,6 +260,18 @@ interface IChatToolInvocationSerialized {
 
 VS Code は一部の tool / edit / markdown を thinking コンテナ内に pin する。ログビューア初期版でも `isAttachedToThinking`、または直前の active thinking block を見てツールを thinking の下に入れる。ただし完全再現は後続段階とし、まずは順序を保った独立 part 表示でよい。
 
+現行 VS Code は pin 対象 tool が thinking より先に現れた場合も synthetic thinking container を作る。
+後続の thinking と pin 対象 tool は、Markdown などの非 pin part が現れるまで同じ container へ順序を
+保って追加される。空 thinking marker は ID 更新の区切りだが、container 自体を閉じない。
+
+`toolSpecificData.kind === "subagent"` かつ自身に `subAgentInvocationId` がない親 tool は例外である。
+現行 VS Code は親の `toolCallId` を effective ID とする専用 dropdown に置き換え、同じ ID を
+`subAgentInvocationId` に持つ child tool、hook、edit code block をその内側へ表示する。child tool は
+thinking へ pin しない。parallel subagent は ID ごとに分離し、CLI 由来の深い nested subagent が
+root ancestor ID を持つ場合は root dropdown へ畳み込む。
+edit 用 `codeblockUri` の直後にある `textEditGroup` は annotation の `subAgentInvocationId` を継承する。
+間にある `undoStop` は無視し、edit UI 用のコードフェンスだけの Markdown は本文として表示しない。
+
 ### textEditGroup と chatEditingSessions
 
 `textEditGroup` は response part 内に対象 URI と edits を持つ。サンプルでは `chatEditingSessions/<sessionId>/state.json` もあり、編集前後のファイル内容は `contents/<hash>` に分離保存される。
