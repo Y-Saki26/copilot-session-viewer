@@ -47,7 +47,7 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
       this.logger.info('Starting workspace scan.');
       this.workspaceSessions.clear();
       this.workspaceLoads.clear();
-      const scan = await this.scanner.scan(this.context);
+      const scan = await this.scanner.scan();
       await this.cacheRepository.save(scan);
       this.lastScan = scan;
       this.logger.info(`Workspace scan completed in ${Date.now() - startedAt}ms. Workspaces=${scan.workspaceCount}, Sessions=${scan.sessionCount}, Warnings=${scan.warnings.length}.`);

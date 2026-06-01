@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 
 import { ChatLogDecoder, decodeChatLogFile } from './chatLogDecoder';
 import { ScanSummary, ScanWarning, SessionSummary, WorkspaceSummary } from './types';
+import { getWorkspaceStorageRoots } from './workspaceStorageRoots';
 
 type WorkspaceDescriptor = {
   workspaceHash: string;
@@ -22,9 +23,9 @@ type ParsedSession = {
 export class CopilotSessionScanner {
   private readonly chatLogDecoder = new ChatLogDecoder();
 
-  public async scan(context: vscode.ExtensionContext): Promise<ScanSummary> {
+  public async scan(): Promise<ScanSummary> {
     const warnings: ScanWarning[] = [];
-    const roots = await this.resolveRoots(context, warnings);
+    const roots = await this.resolveRoots(warnings);
     const workspaceDescriptors: WorkspaceDescriptor[] = [];
 
     for (const root of roots) {
@@ -89,17 +90,12 @@ export class CopilotSessionScanner {
     };
   }
 
-  private async resolveRoots(context: vscode.ExtensionContext, warnings: ScanWarning[]): Promise<string[]> {
+  private async resolveRoots(warnings: ScanWarning[]): Promise<string[]> {
     const configuration = vscode.workspace.getConfiguration('copilotSessionViewer');
     const configuredRoots = configuration.get<string[]>('workspaceStorageRoots', []);
-    const useBundledSampleData = configuration.get<boolean>('useBundledSampleData', true);
     const uniqueRoots = new Set<string>();
 
-    if (useBundledSampleData) {
-      uniqueRoots.add(vscode.Uri.joinPath(context.extensionUri, 'resources', 'workspaceStorage').fsPath);
-    }
-
-    for (const configuredRoot of configuredRoots) {
+    for (const configuredRoot of getWorkspaceStorageRoots(configuredRoots)) {
       if (!configuredRoot.trim()) {
         continue;
       }

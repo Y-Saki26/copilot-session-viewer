@@ -69,7 +69,12 @@
 
 - 型: string array
 - 既定値: []
-- 意味: 追加で scan する workspaceStorage ルート
+- 意味: scan する workspaceStorage ルート。空の場合は OS ごとの既定値を使う
+
+OS ごとの既定値:
+
+- Windows: `%APPDATA%/Code/User/workspaceStorage`
+- UNIX 系: `~/.config/Code/User/workspaceStorage`
 
 サポートするパス表記:
 
@@ -78,20 +83,18 @@
 - `${env:VAR}`
 - `$VAR`
 
-### 3.2 `copilotSessionViewer.useBundledSampleData`
-
-- 型: boolean
-- 既定値: true
-- 意味: リポジトリ配下の `resources/workspaceStorage` を scan 対象へ含める
-
 ## 4. データソースと探索仕様
 
 ### 4.1 ルート解決
 
 scan 対象 root は次の順序で組み立てる。
 
-1. `useBundledSampleData === true` の場合、`resources/workspaceStorage`
-2. `workspaceStorageRoots` に指定された各ルート
+1. `COPILOT_SESSION_VIEWER_WORKSPACE_STORAGE_ROOTS` が設定されている場合、その値
+2. `workspaceStorageRoots` に 1 件以上指定されている場合、その値
+3. いずれも指定されていない場合、OS ごとの既定値
+
+`COPILOT_SESSION_VIEWER_WORKSPACE_STORAGE_ROOTS` は `.vscode/launch.json` から F5 デバッグ起動へ
+`resources/workspaceStorage` を渡すための開発用 override とする。複数指定時は OS の path delimiter で分割する。
 
 - 空文字は無視する
 - 変数展開後は絶対パス化する
@@ -544,8 +547,8 @@ level:
 
 - VSIX 生成は `npm run package:vsix`
 - `resources/**` は VSIX から除外される
-- そのため packaged extension では bundled sample data を前提にできない
-- 実運用では `workspaceStorageRoots` の設定が必要になる
+- そのため packaged extension にサンプルデータやローカルデータは含まれない
+- 実運用では OS ごとの既定 root または `workspaceStorageRoots` の設定を使う
 
 ## 16. 既知の制約
 

@@ -9,6 +9,9 @@
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}"
       ],
+      "env": {
+        "COPILOT_SESSION_VIEWER_WORKSPACE_STORAGE_ROOTS": "${workspaceFolder}/resources/workspaceStorage"
+      },
       "outFiles": [
         "${workspaceFolder}/out/**/*.js"
       ],

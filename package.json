@@ -64,12 +64,7 @@
           "items": {
             "type": "string"
           },
-          "markdownDescription": "Additional workspaceStorage roots to scan. Example for Windows: %APPDATA%/Code/User/workspaceStorage"
-        },
-        "copilotSessionViewer.useBundledSampleData": {
-          "type": "boolean",
-          "default": true,
-          "description": "Include the bundled sample data under resources/workspaceStorage when scanning."
+          "markdownDescription": "workspaceStorage roots to scan. When empty, the platform default is used: `%APPDATA%/Code/User/workspaceStorage` on Windows or `~/.config/Code/User/workspaceStorage` on UNIX-like systems."
         }
       }
     }
