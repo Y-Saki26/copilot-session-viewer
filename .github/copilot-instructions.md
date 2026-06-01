@@ -13,5 +13,6 @@
 
 ## 参照資料
 
+- 開発時のガイドライン、テスト手順、リリースビルドの方法: [docs/development-guide.md](../docs/development-guide.md)
 - 詳細なプロジェクト構成、実装メモ、検証手順: [docs/agent-guide.md](../docs/agent-guide.md)
 - ユーザー向け概要: [README.md](../README.md)

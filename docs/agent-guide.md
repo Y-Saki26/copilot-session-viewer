@@ -6,7 +6,7 @@
 
 Copilot Session Viewer は、GitHub Copilot Chat のセッションログを読み取り、VS Code の Activity Bar 内 Webview に一覧表示する VS Code 拡張です。
 
-現状はモックアップ段階です。`workspaceStorage` 配下の `chatSessions` を走査し、ワークスペースごとにセッションタイトルをまとめて表示します。起動時は SQLite キャッシュを即時表示し、その後バックグラウンドで再スキャンします。
+`workspaceStorage` 配下の `chatSessions` を走査し、ワークスペースごとにセッションタイトルをまとめて表示します。起動時は SQLite キャッシュを即時表示し、その後バックグラウンドで再スキャンします。
 
 ## 主要構成
 
@@ -14,6 +14,7 @@ Copilot Session Viewer は、GitHub Copilot Chat のセッションログを読�
 - `tsconfig.json`: TypeScript 設定。`strict: true`, `module: commonjs`, `target: ES2022`, `rootDir: src`, `outDir: out`。
 - `src/extension.ts`: 拡張の activation entrypoint。Webview provider とコマンドを登録する。
 - `src/viewProvider.ts`: VS Code Webview の HTML 生成、メッセージ処理、スキャン/キャッシュ読み込みの調停。
+- `src/workspaceStorageRoots.ts`: OS ごとの既定 `workspaceStorage` ルートと開発用 override の解決。
 - `src/logScanner.ts`: `workspaceStorage` ルート解決、`chatSessions` 探索、JSONL/JSON セッションファイル解析。
 - `src/scanCacheRepository.ts`: `sql.js` を使った `globalStorageUri/session-cache.sqlite` の読み書き。
 - `src/types.ts`: スキャン結果、セッション、警告の共有型。
@@ -43,19 +44,20 @@ Copilot Session Viewer は、GitHub Copilot Chat のセッションログを読�
 
 `CopilotSessionScanner.scan()` は次の順序で処理します。
 
-1. `copilotSessionViewer.useBundledSampleData` と `copilotSessionViewer.workspaceStorageRoots` から候補ルートを作る。
+1. `copilotSessionViewer.workspaceStorageRoots` から候補ルートを作る。空の場合は OS ごとの既定 root を使う。F5 デバッグ起動では `.vscode/launch.json` の `COPILOT_SESSION_VIEWER_WORKSPACE_STORAGE_ROOTS` が優先される。
 2. 存在しないルートは `warnings` に積む。
 3. 各ルート直下のワークスペースディレクトリから `chatSessions` を探す。
 4. `workspace.json` があれば `folder` または `workspace` から表示名とパスを作る。
 5. `chatSessions` 内の `.jsonl` と `.json` を解析する。
 6. `updatedAt` 降順、同一時刻は `title` 昇順で返す。
 
-`README.md` と `package.json` では `resources/workspaceStorage` のサンプルデータを想定していますが、現時点の作業ツリーには `resources/workspaceStorage` は存在しません。挙動確認では設定に実在する `workspaceStorage` を追加するか、サンプルデータを追加する作業として扱ってください。
+`resources/workspaceStorage` は F5 デバッグ起動と実ファイル検証テスト用のサンプルデータです。`.vscodeignore` により VSIX から除外されるため、配布版の実行時データとしては扱わないでください。
 
 ### セッションファイル
 
 - JSON snapshot は `sessionId`, `customTitle`, `creationDate`, `inputState.inputText` を見る。
 - JSONL は `kind === 0` の初期状態と、`kind === 1` の `customTitle` / `inputState.inputText` 更新を読む。
+- 一覧 summary の `isEmpty` は JSONL mutation log を全行復元した最終状態の `requests` 配列から判定する。サイドバーは既定で空セッションを隠し、チェックボックスで表示を切り替える。
 - タイトルは `customTitle` を優先し、なければ最初の入力行を 50 文字以内に切り詰める。さらに無ければファイル名を使う。
 - パース失敗は全体を止めず `warnings` に積む設計。
 

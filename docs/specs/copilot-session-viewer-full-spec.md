@@ -10,7 +10,7 @@
 ## 1. 製品概要
 
 - 拡張機能名: Copilot Session Viewer
-- 現在バージョン: 0.0.4
+- 現在バージョン: 0.0.5
 - 種別: VS Code 拡張機能
 - 目的: GitHub Copilot Chat の保存済みセッションログを読み取り、ワークスペース単位の一覧表示と、選択セッションの会話本文表示を行う
 - 想定データソース: VS Code の workspaceStorage 配下に保存された Copilot Chat セッションログ
@@ -29,6 +29,7 @@
 
 - view id: `copilotSessionViewer.sessionsView`
 - 表示名: Sessions
+- アイコン: `media/activitybar.svg`
 - 役割:
   - scan 結果のサマリー表示
   - ワークスペース一覧の表示
@@ -69,7 +70,12 @@
 
 - 型: string array
 - 既定値: []
-- 意味: 追加で scan する workspaceStorage ルート
+- 意味: scan する workspaceStorage ルート。空の場合は OS ごとの既定値を使う
+
+OS ごとの既定値:
+
+- Windows: `%APPDATA%/Code/User/workspaceStorage`
+- UNIX 系: `~/.config/Code/User/workspaceStorage`
 
 サポートするパス表記:
 
@@ -78,20 +84,18 @@
 - `${env:VAR}`
 - `$VAR`
 
-### 3.2 `copilotSessionViewer.useBundledSampleData`
-
-- 型: boolean
-- 既定値: true
-- 意味: リポジトリ配下の `resources/workspaceStorage` を scan 対象へ含める
-
 ## 4. データソースと探索仕様
 
 ### 4.1 ルート解決
 
 scan 対象 root は次の順序で組み立てる。
 
-1. `useBundledSampleData === true` の場合、`resources/workspaceStorage`
-2. `workspaceStorageRoots` に指定された各ルート
+1. `COPILOT_SESSION_VIEWER_WORKSPACE_STORAGE_ROOTS` が設定されている場合、その値
+2. `workspaceStorageRoots` に 1 件以上指定されている場合、その値
+3. いずれも指定されていない場合、OS ごとの既定値
+
+`COPILOT_SESSION_VIEWER_WORKSPACE_STORAGE_ROOTS` は `.vscode/launch.json` から F5 デバッグ起動へ
+`resources/workspaceStorage` を渡すための開発用 override とする。複数指定時は OS の path delimiter で分割する。
 
 - 空文字は無視する
 - 変数展開後は絶対パス化する
@@ -198,6 +202,7 @@ session summary は session file ごとに生成する。
 
 - `id`
 - `title`
+- `isEmpty`
 - `workspaceHash`
 - `workspaceName`
 - `workspaceFolder`
@@ -236,6 +241,13 @@ summary 用の軽量パースでは、各行を順に読み次を拾う。
 3. セッションファイル名
 
 `inputText` 由来の title は 50 文字超過時に省略する。
+
+### 7.4 空セッション判定
+
+- session summary 生成時に JSONL mutation log または JSON snapshot を復元する
+- 復元結果の `requests` が空、または配列でない場合は `isEmpty: true` とする
+- sidebar は `isEmpty` を使い、履歴が空のセッションを既定で隠す
+- 旧 SQLite cache から workspace summary を再構成した場合は互換性のため `isEmpty: false` とする
 
 ## 8. JSONL 全文復元仕様
 
@@ -378,8 +390,10 @@ session detail 表示時は軽量 summary ではなく、session file 全体を�
 
 ### 10.1 header
 
+- eyebrow: `Local Chat History`
 - Refresh ボタン
 - Settings ボタン
+- `Show empty sessions` チェックボックス
 
 ### 10.2 summary 表示
 
@@ -388,7 +402,7 @@ session detail 表示時は軽量 summary ではなく、session file 全体を�
 - Source
 - Roots
 - Workspaces
-- Sessions
+- Stored logs
 - Scanned
 
 加えて、scan 対象 roots の一覧を表示する。
@@ -403,16 +417,21 @@ session detail 表示時は軽量 summary ではなく、session file 全体を�
 - 各 workspace を `<details>` ベースの折りたたみ UI で表示する
 - 初期状態は折りたたみ
 - 展開中のみ session 一覧を表示する
-- 件数表示は summary の `sessionCount`
+- session 一覧の読み込み前は保存ログ数を表示する
+- 読み込み後は空セッション filter 適用後の表示件数を表示する
+- 空セッションは既定で非表示にする
+- `Show empty sessions` チェックボックスで表示を切り替える
 - 選択中 session は強調表示する
 
 ### 10.5 state 保持
 
-Webview state に次のみ保持する。
+Webview state に次を保持する。
 
 - `selectedSessionPath`
+- `expandedWorkspaces`
+- `showEmptySessions`
 
-workspace の開閉状態はランタイム state として管理されるが、現行実装では永続化していない。
+workspace の開閉状態と空セッション表示設定は再描画後も維持する。
 
 ## 11. Session Detail UI 仕様
 
@@ -454,7 +473,9 @@ response part ごとの表示:
 - thinking/tool/edit/unknown: detail card
 - raw JSON は折りたたみで表示
 
-markdown は現状プレーンテキストに近い multiline 表示であり、専用 markdown renderer は未実装である。
+markdown は `marked` で HTML 化し、`DOMPurify` で sanitize して表示する。
+コードフェンスは annotation を付与した code block として描画し、`highlight.js` が利用可能な場合は syntax highlight を適用する。
+runtime dependency の読み込みに失敗した場合は escaped plain text 表示へ fallback する。
 
 ## 12. 拡張ホストと Webview のメッセージ仕様
 
@@ -515,6 +536,9 @@ level:
 対象:
 
 - JSONL 復元器
+- workspaceStorage root 解決
+- sidebar の空セッション filter
+- detail Markdown renderer
 
 確認内容:
 
@@ -522,6 +546,12 @@ level:
 - 初期 entry 欠落
 - 配列以外への push
 - JSON snapshot decode
+- `requests` 有無の判定
+- Windows / UNIX 系の既定 root
+- デバッグ用 root override
+- 空セッションの表示 / 非表示 filter
+- Markdown renderer dependency の fallback
+- code block annotation と syntax highlight
 
 ### 14.2 integration test
 
@@ -544,22 +574,24 @@ level:
 
 - VSIX 生成は `npm run package:vsix`
 - `resources/**` は VSIX から除外される
-- そのため packaged extension では bundled sample data を前提にできない
-- 実運用では `workspaceStorageRoots` の設定が必要になる
+- そのため packaged extension にサンプルデータやローカルデータは含まれない
+- 実運用では OS ごとの既定 root または `workspaceStorageRoots` の設定を使う
+- F5 デバッグ起動では `.vscode/launch.json` から `resources/workspaceStorage` を override root として渡す
+- detail renderer 用の `marked`、`dompurify`、`highlight.js` runtime asset は VSIX に含める
 
 ## 16. 既知の制約
 
 - GitHub Copilot Chat の UI 完全再現はしていない
-- markdown 専用 renderer は未実装
 - response part の専用表示は一部種類のみ
 - `chatSessions` 直下以外の再帰 scan は行わない
 - scan cache は検索 index ではなく最後の scan snapshot
 - 初期表示高速化のため、session 一覧と本文は遅延読み込みに依存する
 
-## 17. v0.0.4 時点の主要モジュール
+## 17. v0.0.5 時点の主要モジュール
 
 - `src/extension.ts`: 拡張起動、provider と command 登録、logger 初期化
 - `src/viewProvider.ts`: sidebar Webview、cache / scan / 遅延読み込み / session 選択の調停
+- `src/workspaceStorageRoots.ts`: OS ごとの既定 root とデバッグ用 override の解決
 - `src/logScanner.ts`: root 解決、workspace 検出、summary scan、session summary 復元
 - `src/chatLogDecoder.ts`: `.jsonl` mutation log と `.json` snapshot の全文 decode
 - `src/chatDocumentMapper.ts`: 復元済みデータから detail 表示用 document への変換
@@ -567,6 +599,8 @@ level:
 - `src/scanCacheRepository.ts`: SQLite cache の load / save
 - `src/outputLogger.ts`: Output チャンネルへのログ出力
 - `media/main.js`: sidebar / detail panel の描画とメッセージ通信
+- `media/detailRendererShared.mjs`: Markdown、sanitize、code block、syntax highlight の共通描画
+- `media/sessionListShared.mjs`: 空セッション filter
 - `media/styles.css`: Webview スタイル
 
 ## 18. 更新運用

@@ -233,6 +233,10 @@ export async function decodeChatLogFile(
   throw new Error(`Unsupported session log extension: ${extension || '<none>'}`);
 }
 
+export function hasStoredRequests(data: SerializableChatData): boolean {
+  return Array.isArray(data.requests) && data.requests.length > 0;
+}
+
 function formatPath(path: ObjectPath): string {
   return path.map((segment) => (typeof segment === 'number' ? `[${segment}]` : `.${segment}`)).join('') || '<root>';
 }

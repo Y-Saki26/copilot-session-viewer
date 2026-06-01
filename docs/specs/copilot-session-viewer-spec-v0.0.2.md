@@ -3,7 +3,7 @@
 ## Overview
 
 - Version: 0.0.2
-- Type: VS Code extension mockup
+- Type: VS Code extension
 - Purpose: Scan GitHub Copilot Chat session logs under workspaceStorage and display session titles in a sidebar WebviewView.
 
 ## Entry Points
@@ -126,7 +126,7 @@ Parsing rules:
 
 ## Current Limitations
 
-- The extension is still a mockup and only lists session titles and metadata.
+- This version only lists session titles and metadata.
 - Session bodies, messages, and detailed transcript browsing are not implemented.
 - Scanning is full-scan based; there is no incremental file indexing yet.
 - The SQLite cache is a last-scan snapshot cache, not a search index.

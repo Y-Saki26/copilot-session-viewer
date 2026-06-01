@@ -1,8 +1,8 @@
 {
   "name": "copilot-session-viewer",
   "displayName": "Copilot Session Viewer",
-  "description": "VS Code extension mockup for scanning Copilot Chat session logs.",
-  "version": "0.0.4",
+  "description": "VS Code extension for browsing saved Copilot Chat session logs.",
+  "version": "0.0.5",
   "publisher": "local",
   "license": "UNLICENSED",
   "engines": {
@@ -27,7 +27,8 @@
         {
           "type": "webview",
           "id": "copilotSessionViewer.sessionsView",
-          "name": "Sessions"
+          "name": "Sessions",
+          "icon": "media/activitybar.svg"
         }
       ]
     },
@@ -64,19 +65,14 @@
           "items": {
             "type": "string"
           },
-          "markdownDescription": "Additional workspaceStorage roots to scan. Example for Windows: %APPDATA%/Code/User/workspaceStorage"
-        },
-        "copilotSessionViewer.useBundledSampleData": {
-          "type": "boolean",
-          "default": true,
-          "description": "Include the bundled sample data under resources/workspaceStorage when scanning."
+          "markdownDescription": "workspaceStorage roots to scan. When empty, the platform default is used: `%APPDATA%/Code/User/workspaceStorage` on Windows or `~/.config/Code/User/workspaceStorage` on UNIX-like systems."
         }
       }
     }
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "test": "npm run compile && node --test test/chatLogDecoder.test.js test/chatLogDecoder.integration.test.js test/chatDocumentMapper.test.js test/detailRendererShared.test.js",
+    "test": "npm run compile && node --test \"test/*.test.js\"",
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
     "prepackage:vsix": "npm run compile",

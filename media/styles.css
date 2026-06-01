@@ -159,6 +159,19 @@ code,
   flex-wrap: wrap;
 }
 
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.toggle input {
+  margin: 0;
+}
+
 button {
   appearance: none;
   border: 1px solid transparent;

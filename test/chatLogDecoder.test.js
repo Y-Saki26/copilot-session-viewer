@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
-const { ChatLogDecoder } = require('../out/chatLogDecoder.js');
+const { ChatLogDecoder, hasStoredRequests } = require('../out/chatLogDecoder.js');
 
 test('decodeJsonLines applies set push splice and delete entries', () => {
   const contents = [
@@ -71,4 +71,10 @@ test('decodeJsonSnapshot returns the parsed session object', () => {
   assert.equal(decoded.sessionId, 'snapshot-session');
   assert.equal(decoded.customTitle, 'Snapshot Title');
   assert.deepEqual(decoded.requests, []);
+});
+
+test('hasStoredRequests reports whether a session contains conversation turns', () => {
+  assert.equal(hasStoredRequests({ requests: [{ requestId: 'request-1' }] }), true);
+  assert.equal(hasStoredRequests({ requests: [] }), false);
+  assert.equal(hasStoredRequests({}), false);
 });
