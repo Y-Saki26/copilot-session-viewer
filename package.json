@@ -72,7 +72,10 @@
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "test": "npm run compile && node --test \"test/*.test.js\"",
+    "test": "npm run compile && npm run test:typecheck && npm run test:vitest",
+    "test:typecheck": "tsc -p ./tsconfig.test.json",
+    "test:vitest": "vitest run",
+    "test:watch": "vitest",
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
     "prepackage:vsix": "npm run compile",
@@ -89,7 +92,8 @@
     "@types/sql.js": "^1.4.9",
     "@types/vscode": "^1.90.0",
     "@vscode/vsce": "2.27.0",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.8"
   },
   "overrides": {
     "cheerio": "1.0.0-rc.12"

@@ -1,11 +1,11 @@
-const test = require('node:test');
 const assert = require('node:assert/strict');
+import { test } from 'vitest';
 
-const {
+import {
   getDefaultWorkspaceStorageRoots,
   getWorkspaceStorageRoots,
   WORKSPACE_STORAGE_ROOTS_OVERRIDE_ENV
-} = require('../out/workspaceStorageRoots.js');
+} from '../src/workspaceStorageRoots';
 
 test('uses the Windows workspaceStorage root by default', () => {
   assert.deepEqual(getDefaultWorkspaceStorageRoots('win32'), [

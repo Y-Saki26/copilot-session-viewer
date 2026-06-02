@@ -12,6 +12,8 @@ Copilot Session Viewer は、GitHub Copilot Chat のセッションログを読�
 
 - `package.json`: VS Code 拡張の manifest、コマンド、ビュー、設定、npm scripts、依存関係。
 - `tsconfig.json`: TypeScript 設定。`strict: true`, `module: commonjs`, `target: ES2022`, `rootDir: src`, `outDir: out`。
+- `tsconfig.test.json`: Vitest 用 TypeScript 設定。`src/*.ts`, `test/*.test.ts`, `media/*.mjs` を strict 型検査する。
+- `vitest.config.ts`: TypeScript 単体テストと結合テストの Vitest 設定。
 - `src/extension.ts`: 拡張の activation entrypoint。Webview provider とコマンドを登録する。
 - `src/viewProvider.ts`: VS Code Webview の HTML 生成、メッセージ処理、スキャン/キャッシュ読み込みの調停。
 - `src/workspaceStorageRoots.ts`: OS ごとの既定 `workspaceStorage` ルートと開発用 override の解決。
@@ -89,6 +91,14 @@ npm install
 npm run compile
 ```
 
+テスト:
+
+```powershell
+npm test
+```
+
+`npm test` は TypeScript テストの型検査と Vitest を実行します。
+
 開発起動:
 
 ```text
@@ -111,7 +121,7 @@ npm run package:vsix
 - スキャン/パース処理を変更したら、JSONL と JSON の両方、壊れた JSONL 行、存在しないルートの warning を確認する。
 - キャッシュ処理を変更したら、初回 live scan と再起動後の cache load の両方を確認する。
 
-現時点で npm scripts に自動テストや lint は定義されていません。テスト追加の依頼がない限り、既存の検証入口は `npm run compile` と Extension Development Host での手動確認です。
+自動テストの入口は `npm test` です。TypeScript テストの strict 型検査と Vitest をまとめて実行します。
 
 ## コーディング規約
 

@@ -12,29 +12,35 @@
 
 ## テスト
 
-`chatLogDecoder` のテストは Node.js 標準の test runner を使います。
-テストコードは `out/chatLogDecoder.js` を参照するため、個別実行する場合は先に `npm run compile` を実行してください。
+TypeScript の単体テストと結合テストは Vitest を使います。
+テストコードは `src/*.ts` を直接参照し、`npm run test:typecheck` で strict 型検査も行います。
 
 まとめて実行する場合:
 
 1. npm test
 
-`npm test` は `npm run compile` の後に、単体テストとダミーデータを使う結合テストを実行します。
+`npm test` は compile、TypeScript テストの型検査、Vitest の順に実行します。
 実ファイル検証テストは、環境変数 `COPILOT_SESSION_VIEWER_REAL_SESSION_LOG` が未指定なら skip されます。
+
+Vitest だけを実行する場合:
+
+1. `npm run test:vitest`
+
+watch mode で実行する場合:
+
+1. `npm run test:watch`
 
 ### 単体テスト
 
 `kind:0/1/2/3` の適用や異常系を確認します。
 
-1. npm run compile
-2. node --test test/chatLogDecoder.test.js
+1. `npm run test:vitest -- test/chatLogDecoder.test.ts`
 
 ### ダミーデータでの結合テスト
 
 `test/fixtures/dummy-session.jsonl` を実際のセッションファイルと同じ入口でデコードし、復元結果を確認します。
 
-1. `npm run compile`
-2. `node --test test/chatLogDecoder.integration.test.js`
+1. `npm run test:vitest -- test/chatLogDecoder.integration.test.ts`
 
 ### 実ファイルでの検証テスト
 
@@ -43,13 +49,11 @@
 
 プレースホルダー:
 
-1. `npm run compile`
-2. `COPILOT_SESSION_VIEWER_REAL_SESSION_LOG=/path/to/session-or-directory node --test test/chatLogDecoder.integration.test.js`
+1. `COPILOT_SESSION_VIEWER_REAL_SESSION_LOG=/path/to/session-or-directory npm run test:vitest -- test/chatLogDecoder.integration.test.ts`
 
 このリポジトリに同梱している `resources` のサンプルデータで試す例:
 
-1. `npm run compile`
-2. `COPILOT_SESSION_VIEWER_REAL_SESSION_LOG=resources/workspaceStorage/5f3aa8f0ed4fe36b9f000ed9d50e6b9b/chatSessions node --test test/chatLogDecoder.integration.test.js`
+1. `COPILOT_SESSION_VIEWER_REAL_SESSION_LOG=resources/workspaceStorage/5f3aa8f0ed4fe36b9f000ed9d50e6b9b/chatSessions npm run test:vitest -- test/chatLogDecoder.integration.test.ts`
 
 実ファイル検証も含めてまとめて回したい場合は、次のように `npm test` を使えます。
 
@@ -63,4 +67,4 @@
 
 ローカルにインストールする場合は、VS Code で Extensions: Install from VSIX... を実行して、生成された VSIX を選択してください。
 
-`resources/**` は VSIX から除外されるため、サンプルログやローカルデータは配布物に含まれません。
+`resources/**`、`test/**`、Vitest 設定は VSIX から除外されるため、サンプルログ、ローカルデータ、テスト資産は配布物に含まれません。
