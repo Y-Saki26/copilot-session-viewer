@@ -79,6 +79,10 @@ Webview と拡張ホストの通信は現在 `ready`, `refresh`, `openSettings`,
 
 ## 開発コマンド
 
+必要環境:
+
+- Node.js 20.18.1 以上
+
 初回セットアップ:
 
 ```powershell
@@ -112,6 +116,13 @@ npm run package:vsix
 ```
 
 `package:vsix` は `vsce package --allow-missing-repository` を実行し、事前に `npm run compile` が走ります。
+
+### 依存関係の更新
+
+- `@types/node` は開発最低環境に合わせて Node.js 20 系を使う。
+- `@types/vscode` は manifest の最低対応 VS Code `1.90.0` に固定する。latest へ追従すると、古い対応環境に存在しない API を誤って利用できてしまう。
+- `@vscode/vsce` は検証済みの安定版を exact pin する。
+- `marked`、`dompurify`、`highlight.js` を更新した場合は、`.vscodeignore` の runtime asset path と VSIX 内容を再確認する。
 
 ## 検証方針
 
