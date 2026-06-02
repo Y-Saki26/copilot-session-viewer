@@ -424,6 +424,7 @@ session detail 表示時は軽量 summary ではなく、session file 全体を�
 - Scanned
 
 加えて、scan 対象 roots の一覧を表示する。
+これらの scan 詳細は初期状態では折りたたみ、必要な場合だけ展開する。
 
 ### 10.3 warnings 表示
 
@@ -435,6 +436,10 @@ session detail 表示時は軽量 summary ではなく、session file 全体を�
 - 各 workspace を `<details>` ベースの折りたたみ UI で表示する
 - 初期状態は折りたたみ
 - 展開中のみ session 一覧を表示する
+- 狭い sidebar 幅でも workspace 名、folder、件数、session 情報を折り返して表示する
+- workspace 見出しには冗長な固定ラベルを表示しない
+- sidebar の左右余白は抑え、狭い表示幅を session 情報に優先して使う
+- 背景は VS Code の表示テーマに合わせた単色とする
 - session 一覧の読み込み前は保存ログ数を表示する
 - 読み込み後は空セッション filter 適用後の表示件数を表示する
 - 空セッションは既定で非表示にする
@@ -478,12 +483,19 @@ workspace の開閉状態と空セッション表示設定は再描画後も維�
 - Workspace path
 - Source path
 
+Workspace、Turns、Created、Updated、Responder は初期状態では折りたたみ、必要な場合だけ展開する。
+
 本文は turn ごとに表示する。
 
 - Turn 番号
 - request timestamp
 - User message
 - Assistant response parts
+- panel 幅に合わせて本文表示幅を伸縮する
+- 各 Turn、User message、Assistant message は初期状態で展開する
+- 各 Turn、User message、Assistant message は個別に折りたたみできる
+- `Collapse all` では Turn を展開したまま User message と Assistant message だけを折りたたみ、各発言者の見出しを表示する
+- `Expand all` では Turn、User message、Assistant message をすべて展開する
 
 response part ごとの表示:
 
