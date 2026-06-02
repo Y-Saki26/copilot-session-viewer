@@ -35,15 +35,17 @@ function initSessionsView() {
   const workspaceWarnings = new Map();
   const workspaceErrors = new Map();
   const loadingWorkspaces = new Set();
+  let isWorkspacePreloadRunning = false;
 
   const refreshButton = document.getElementById('refreshButton');
+  const loadAllButton = document.getElementById('loadAllButton');
   const settingsButton = document.getElementById('settingsButton');
   const showEmptySessionsCheckbox = document.getElementById('showEmptySessionsCheckbox');
   const summary = document.getElementById('summary');
   const warnings = document.getElementById('warnings');
   const sessions = document.getElementById('sessions');
 
-  if (!refreshButton || !settingsButton || !showEmptySessionsCheckbox || !summary || !warnings || !sessions) {
+  if (!refreshButton || !loadAllButton || !settingsButton || !showEmptySessionsCheckbox || !summary || !warnings || !sessions) {
     return;
   }
 
@@ -57,6 +59,15 @@ function initSessionsView() {
 
   settingsButton.addEventListener('click', function () {
     vscode.postMessage({ type: 'openSettings' });
+  });
+
+  loadAllButton.addEventListener('click', function () {
+    if (isWorkspacePreloadRunning || !currentScan || !Array.isArray(currentScan.workspaces) || currentScan.workspaces.length === 0) {
+      return;
+    }
+
+    setWorkspacePreloadState(true, 0, currentScan.workspaces.length);
+    vscode.postMessage({ type: 'loadAllWorkspaceSessions' });
   });
 
   showEmptySessionsCheckbox.addEventListener('change', function () {
@@ -75,6 +86,21 @@ function initSessionsView() {
 
     if (message.type === 'scanResult') {
       renderScan(message.value);
+      return;
+    }
+
+    if (message.type === 'workspaceSessionsPreloadStarted') {
+      setWorkspacePreloadState(true, 0, message.value.total);
+      return;
+    }
+
+    if (message.type === 'workspaceSessionsPreloadProgress') {
+      setWorkspacePreloadState(true, message.value.completed, message.value.total);
+      return;
+    }
+
+    if (message.type === 'workspaceSessionsPreloadCompleted') {
+      setWorkspacePreloadState(false);
       return;
     }
 
@@ -111,12 +137,14 @@ function initSessionsView() {
     summary.innerHTML = '<div class="card">' + escapeHtml(text) + '</div>';
     warnings.innerHTML = '';
     sessions.innerHTML = '';
+    updateLoadAllButton();
   }
 
   function renderError(text) {
     summary.innerHTML = '<div class="card error">' + escapeHtml(text) + '</div>';
     warnings.innerHTML = '';
     sessions.innerHTML = '';
+    updateLoadAllButton();
   }
 
   function renderScan(scan) {
@@ -189,6 +217,22 @@ function initSessionsView() {
 
     attachWorkspaceToggleListeners(sessions, requestWorkspaceSessions);
     attachSessionSelectionListeners(sessions, findSessionSummaryBySourcePath);
+    updateLoadAllButton();
+  }
+
+  function setWorkspacePreloadState(isRunning, completed, total) {
+    isWorkspacePreloadRunning = isRunning;
+    loadAllButton.textContent = isRunning
+      ? 'Loading ' + String(completed || 0) + '/' + String(total || 0)
+      : 'Load all';
+    updateLoadAllButton();
+  }
+
+  function updateLoadAllButton() {
+    loadAllButton.disabled = isWorkspacePreloadRunning
+      || !currentScan
+      || !Array.isArray(currentScan.workspaces)
+      || currentScan.workspaces.length === 0;
   }
 
   function renderWorkspaceBody(workspace, loadedSessions, visibleSessions, loadWarnings, loadError, isLoading) {
@@ -257,6 +301,7 @@ function initSessionsView() {
     loadingWorkspaces.clear();
     state.expandedWorkspaces = {};
     state.selectedSessionPath = undefined;
+    setWorkspacePreloadState(false);
     persistState();
   }
 
