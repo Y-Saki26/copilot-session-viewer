@@ -4,7 +4,15 @@ import * as vscode from 'vscode';
 
 import { ChatLogDecoder, decodeChatLogFile, hasStoredRequests } from './chatLogDecoder';
 import { ScanSummary, ScanWarning, SessionSummary, WorkspaceSummary } from './types';
-import { getWorkspaceStorageRoots } from './workspaceStorageRoots';
+import {
+  getVscodeUserStorageRoots,
+  getWorkspaceStorageRoots,
+  hasWorkspaceStorageRootsOverride
+} from './workspaceStorageRoots';
+
+type ScanRoot =
+  | { kind: 'vscodeUserStorage'; path: string }
+  | { kind: 'workspaceStorage'; path: string };
 
 type WorkspaceDescriptor = {
   workspaceHash: string;
@@ -26,17 +34,22 @@ export class CopilotSessionScanner {
   public async scan(): Promise<ScanSummary> {
     const warnings: ScanWarning[] = [];
     const roots = await this.resolveRoots(warnings);
-    const workspaceDescriptors: WorkspaceDescriptor[] = [];
+    const workspaceDescriptors = new Map<string, WorkspaceDescriptor>();
 
     for (const root of roots) {
-      const descriptors = await this.findWorkspaceDescriptors(root, warnings);
-      workspaceDescriptors.push(...descriptors);
+      const descriptors = root.kind === 'vscodeUserStorage'
+        ? await this.findUserStorageDescriptors(root.path, warnings)
+        : await this.findWorkspaceDescriptors(root.path, warnings);
+
+      for (const descriptor of descriptors) {
+        workspaceDescriptors.set(descriptor.chatSessionsDir, descriptor);
+      }
     }
 
     const workspaces: WorkspaceSummary[] = [];
     let sessionCount = 0;
 
-    for (const workspace of workspaceDescriptors) {
+    for (const workspace of workspaceDescriptors.values()) {
       const sessionFiles = await this.listSessionFiles(workspace.chatSessionsDir, warnings);
       sessionCount += sessionFiles.length;
       workspaces.push({
@@ -51,7 +64,7 @@ export class CopilotSessionScanner {
     workspaces.sort((left, right) => left.workspaceName.localeCompare(right.workspaceName) || left.chatSessionsDir.localeCompare(right.chatSessionsDir));
 
     return {
-      rootsScanned: roots,
+      rootsScanned: roots.map((root) => root.path),
       workspaceCount: workspaces.length,
       sessionCount,
       workspaces,
@@ -90,33 +103,61 @@ export class CopilotSessionScanner {
     };
   }
 
-  private async resolveRoots(warnings: ScanWarning[]): Promise<string[]> {
+  private async resolveRoots(warnings: ScanWarning[]): Promise<ScanRoot[]> {
     const configuration = vscode.workspace.getConfiguration('copilotSessionViewer');
-    const configuredRoots = configuration.get<string[]>('workspaceStorageRoots', []);
-    const uniqueRoots = new Set<string>();
+    const configuredUserStorageRoots = configuration.get<string[]>('vscodeUserStorageRoots', []);
+    const configuredWorkspaceStorageRoots = configuration.get<string[]>('workspaceStorageRoots', []);
+    const roots = hasWorkspaceStorageRootsOverride()
+      ? getWorkspaceStorageRoots(configuredWorkspaceStorageRoots).map((root) => ({ kind: 'workspaceStorage' as const, path: root }))
+      : [
+          ...getVscodeUserStorageRoots(configuredUserStorageRoots).map((root) => ({ kind: 'vscodeUserStorage' as const, path: root })),
+          ...getWorkspaceStorageRoots(configuredWorkspaceStorageRoots).map((root) => ({ kind: 'workspaceStorage' as const, path: root }))
+        ];
+    const uniqueRoots = new Map<string, ScanRoot>();
 
-    for (const configuredRoot of getWorkspaceStorageRoots(configuredRoots)) {
-      if (!configuredRoot.trim()) {
+    for (const root of roots) {
+      if (!root.path.trim()) {
         continue;
       }
 
-      const expanded = this.expandPathVariables(configuredRoot.trim());
-      uniqueRoots.add(path.resolve(expanded));
+      const expanded = this.expandPathVariables(root.path.trim());
+      const resolvedPath = path.resolve(expanded);
+      uniqueRoots.set(`${root.kind}:${resolvedPath}`, { kind: root.kind, path: resolvedPath });
     }
 
-    const existingRoots: string[] = [];
-    for (const root of uniqueRoots) {
-      if (await this.pathExists(root)) {
+    const existingRoots: ScanRoot[] = [];
+    for (const root of uniqueRoots.values()) {
+      if (await this.pathExists(root.path)) {
         existingRoots.push(root);
       } else {
         warnings.push({
-          location: root,
-          message: 'Configured workspaceStorage root was not found.'
+          location: root.path,
+          message: root.kind === 'vscodeUserStorage'
+            ? 'Configured VS Code user storage root was not found.'
+            : 'Configured workspaceStorage root was not found.'
         });
       }
     }
 
     return existingRoots;
+  }
+
+  private async findUserStorageDescriptors(root: string, warnings: ScanWarning[]): Promise<WorkspaceDescriptor[]> {
+    const workspaceStorageRoot = path.join(root, 'workspaceStorage');
+    const descriptors = await this.pathExists(workspaceStorageRoot)
+      ? await this.findWorkspaceDescriptors(workspaceStorageRoot, warnings)
+      : [];
+    const emptyWindowChatSessionsDir = path.join(root, 'globalStorage', 'emptyWindowChatSessions');
+
+    if (await this.pathExists(emptyWindowChatSessionsDir)) {
+      descriptors.push({
+        workspaceHash: 'empty-window',
+        workspaceName: 'Empty Window',
+        chatSessionsDir: emptyWindowChatSessionsDir
+      });
+    }
+
+    return descriptors;
   }
 
   private async findWorkspaceDescriptors(root: string, warnings: ScanWarning[]): Promise<WorkspaceDescriptor[]> {

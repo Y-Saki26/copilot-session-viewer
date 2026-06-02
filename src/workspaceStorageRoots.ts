@@ -1,9 +1,18 @@
 export const WORKSPACE_STORAGE_ROOTS_OVERRIDE_ENV = 'COPILOT_SESSION_VIEWER_WORKSPACE_STORAGE_ROOTS';
 
-export function getDefaultWorkspaceStorageRoots(platform: NodeJS.Platform = process.platform): string[] {
+export function getDefaultVscodeUserStorageRoots(platform: NodeJS.Platform = process.platform): string[] {
   return platform === 'win32'
-    ? ['%APPDATA%/Code/User/workspaceStorage']
-    : ['~/.config/Code/User/workspaceStorage'];
+    ? ['%APPDATA%\\Code\\User']
+    : ['~/.config/Code/User'];
+}
+
+export function getVscodeUserStorageRoots(
+  configuredRoots: readonly string[],
+  platform: NodeJS.Platform = process.platform
+): string[] {
+  return configuredRoots.length > 0
+    ? [...configuredRoots]
+    : getDefaultVscodeUserStorageRoots(platform);
 }
 
 export function getWorkspaceStorageRoots(
@@ -17,7 +26,11 @@ export function getWorkspaceStorageRoots(
     return override.split(delimiter).filter((root) => root.trim());
   }
 
-  return configuredRoots.length > 0
-    ? [...configuredRoots]
-    : getDefaultWorkspaceStorageRoots(platform);
+  return [...configuredRoots];
+}
+
+export function hasWorkspaceStorageRootsOverride(
+  environment: NodeJS.ProcessEnv = process.env
+): boolean {
+  return environment[WORKSPACE_STORAGE_ROOTS_OVERRIDE_ENV] !== undefined;
 }

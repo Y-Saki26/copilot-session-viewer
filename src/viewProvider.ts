@@ -101,7 +101,7 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
         this.logger.info('Settings requested from webview.');
         void vscode.commands.executeCommand(
           'workbench.action.openSettings',
-          'copilotSessionViewer.workspaceStorageRoots'
+          'copilotSessionViewer.vscodeUserStorageRoots'
         );
         return;
       case 'selectSession':
@@ -159,7 +159,7 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
         <div>
           <p class="eyebrow">Local Chat History</p>
           <h1>Copilot Session Viewer</h1>
-          <p class="subtitle">Scan workspaceStorage, choose a session from the list, and open the restored conversation in a main panel.</p>
+          <p class="subtitle">Scan local VS Code chat history, choose a session from the list, and open the restored conversation in a main panel.</p>
         </div>
         <div class="actions">
           <button id="refreshButton">Refresh</button>
