@@ -72,7 +72,10 @@
   },
   "scripts": {
     "compile": "tsc -p ./",
-    "test": "npm run compile && node --test \"test/*.test.js\"",
+    "test": "npm run compile && npm run test:typecheck && npm run test:vitest",
+    "test:typecheck": "tsc -p ./tsconfig.test.json",
+    "test:vitest": "vitest run",
+    "test:watch": "vitest",
     "watch": "tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
     "prepackage:vsix": "npm run compile",
@@ -85,13 +88,11 @@
     "sql.js": "^1.14.1"
   },
   "devDependencies": {
-    "@types/node": "^20.16.5",
-    "@types/sql.js": "^1.4.9",
-    "@types/vscode": "^1.90.0",
-    "@vscode/vsce": "2.27.0",
-    "typescript": "^5.6.3"
-  },
-  "overrides": {
-    "cheerio": "1.0.0-rc.12"
+    "@types/node": "^20.19.41",
+    "@types/sql.js": "^1.4.11",
+    "@types/vscode": "1.90.0",
+    "@vscode/vsce": "3.9.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
   }
 }

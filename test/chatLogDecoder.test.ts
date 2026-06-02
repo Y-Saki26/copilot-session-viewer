@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
-const test = require('node:test');
+import { test } from 'vitest';
 
-const { ChatLogDecoder, hasStoredRequests } = require('../out/chatLogDecoder.js');
+import { ChatLogDecoder, hasStoredRequests } from '../src/chatLogDecoder';
 
 test('decodeJsonLines applies set push splice and delete entries', () => {
   const contents = [
@@ -22,12 +22,13 @@ test('decodeJsonLines applies set push splice and delete entries', () => {
   ].join('\n');
 
   const decoded = new ChatLogDecoder().decodeJsonLines(contents);
+  const nested = decoded.data.nested as { values: string[]; label?: string };
 
   assert.equal(decoded.lineCount, 5);
   assert.deepEqual(decoded.data.items, ['keep', 'replacement', 'tail']);
-  assert.deepEqual(decoded.data.nested.values, ['first', 'second']);
-  assert.equal(decoded.data.nested.label, undefined);
-  assert.equal(Object.prototype.hasOwnProperty.call(decoded.data.nested, 'label'), true);
+  assert.deepEqual(nested.values, ['first', 'second']);
+  assert.equal(nested.label, undefined);
+  assert.equal(Object.prototype.hasOwnProperty.call(nested, 'label'), true);
 });
 
 test('decodeJsonLines rejects logs without an initial entry', () => {

@@ -12,6 +12,8 @@ Copilot Session Viewer は、GitHub Copilot Chat のセッションログを読�
 
 - `package.json`: VS Code 拡張の manifest、コマンド、ビュー、設定、npm scripts、依存関係。
 - `tsconfig.json`: TypeScript 設定。`strict: true`, `module: commonjs`, `target: ES2022`, `rootDir: src`, `outDir: out`。
+- `tsconfig.test.json`: Vitest 用 TypeScript 設定。`src/*.ts`, `test/*.test.ts`, `media/*.mjs` を strict 型検査する。
+- `vitest.config.ts`: TypeScript 単体テストと結合テストの Vitest 設定。
 - `src/extension.ts`: 拡張の activation entrypoint。Webview provider とコマンドを登録する。
 - `src/viewProvider.ts`: VS Code Webview の HTML 生成、メッセージ処理、スキャン/キャッシュ読み込みの調停。
 - `src/workspaceStorageRoots.ts`: OS ごとの既定 `workspaceStorage` ルートと開発用 override の解決。
@@ -77,6 +79,10 @@ Webview と拡張ホストの通信は現在 `ready`, `refresh`, `openSettings`,
 
 ## 開発コマンド
 
+必要環境:
+
+- Node.js 20.18.1 以上
+
 初回セットアップ:
 
 ```powershell
@@ -88,6 +94,14 @@ npm install
 ```powershell
 npm run compile
 ```
+
+テスト:
+
+```powershell
+npm test
+```
+
+`npm test` は TypeScript テストの型検査と Vitest を実行します。
 
 開発起動:
 
@@ -103,6 +117,13 @@ npm run package:vsix
 
 `package:vsix` は `vsce package --allow-missing-repository` を実行し、事前に `npm run compile` が走ります。
 
+### 依存関係の更新
+
+- `@types/node` は開発最低環境に合わせて Node.js 20 系を使う。
+- `@types/vscode` は manifest の最低対応 VS Code `1.90.0` に固定する。latest へ追従すると、古い対応環境に存在しない API を誤って利用できてしまう。
+- `@vscode/vsce` は検証済みの安定版を exact pin する。
+- `marked`、`dompurify`、`highlight.js` を更新した場合は、`.vscodeignore` の runtime asset path と VSIX 内容を再確認する。
+
 ## 検証方針
 
 - TypeScript や manifest を変更したら `npm run compile` を実行する。
@@ -111,7 +132,7 @@ npm run package:vsix
 - スキャン/パース処理を変更したら、JSONL と JSON の両方、壊れた JSONL 行、存在しないルートの warning を確認する。
 - キャッシュ処理を変更したら、初回 live scan と再起動後の cache load の両方を確認する。
 
-現時点で npm scripts に自動テストや lint は定義されていません。テスト追加の依頼がない限り、既存の検証入口は `npm run compile` と Extension Development Host での手動確認です。
+自動テストの入口は `npm test` です。TypeScript テストの strict 型検査と Vitest をまとめて実行します。
 
 ## コーディング規約
 

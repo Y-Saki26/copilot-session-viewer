@@ -1,18 +1,38 @@
-const assert = require('node:assert/strict');
-const test = require('node:test');
+import assert from 'node:assert/strict';
+import { test } from 'vitest';
 
-const { mapChatSessionDocument } = require('../out/chatDocumentMapper.js');
+import { mapChatSessionDocument } from '../src/chatDocumentMapper';
+import { SessionSummary, ViewerResponsePart, ViewerToolDetail } from '../src/types';
 
 const summary = {
   id: 'session-1',
   title: 'Session Title',
+  isEmpty: false,
   workspaceHash: 'workspace-hash',
   workspaceName: 'Workspace',
   workspaceFolder: '/workspace',
   sourcePath: '/workspace/session.jsonl',
   createdAt: 100,
   updatedAt: 200
-};
+} satisfies SessionSummary;
+
+function responsePartAt<T extends ViewerResponsePart['type']>(
+  parts: readonly ViewerResponsePart[],
+  index: number,
+  type: T
+): Extract<ViewerResponsePart, { type: T }> {
+  const part = parts[index];
+  assert.equal(part.type, type);
+  return part as Extract<ViewerResponsePart, { type: T }>;
+}
+
+function toolDetailOfKind<T extends ViewerToolDetail['kind']>(
+  detail: ViewerToolDetail | undefined,
+  kind: T
+): Extract<ViewerToolDetail, { kind: T }> {
+  assert.equal(detail?.kind, kind);
+  return detail as Extract<ViewerToolDetail, { kind: T }>;
+}
 
 test('mapChatSessionDocument normalizes references, attachments, thinking grouping, and inline references', () => {
   const document = mapChatSessionDocument(summary, {
@@ -97,13 +117,13 @@ test('mapChatSessionDocument normalizes references, attachments, thinking groupi
   ]);
 
   const responseParts = document.turns[0].responseParts;
+  const thinkingPart = responsePartAt(responseParts, 1, 'thinking');
+  const markdownPart = responsePartAt(responseParts, 2, 'markdown');
   assert.equal(responseParts.length, 4);
   assert.equal(responseParts[0].type, 'references');
-  assert.equal(responseParts[1].type, 'thinking');
-  assert.equal(responseParts[1].children.length, 1);
-  assert.equal(responseParts[1].children[0].type, 'tool');
-  assert.equal(responseParts[2].type, 'markdown');
-  assert.match(responseParts[2].text, /README\.md/);
+  assert.equal(thinkingPart.children.length, 1);
+  assert.equal(thinkingPart.children[0].type, 'tool');
+  assert.match(markdownPart.text, /README\.md/);
   assert.equal(responseParts[3].type, 'edit');
 });
 
@@ -126,8 +146,7 @@ test('mapChatSessionDocument preserves codeblock annotations on markdown parts',
     ]
   });
 
-  const markdownPart = document.turns[0].responseParts[0];
-  assert.equal(markdownPart.type, 'markdown');
+  const markdownPart = responsePartAt(document.turns[0].responseParts, 0, 'markdown');
   assert.deepEqual(markdownPart.codeBlocks, [
     { label: '/workspace/src/example.js', isEdit: true }
   ]);
@@ -168,13 +187,11 @@ test('mapChatSessionDocument extracts terminal tool details and synthetic error/
   });
 
   const responseParts = document.turns[0].responseParts;
-  assert.equal(responseParts[0].type, 'tool');
-  assert.equal(responseParts[0].detail.kind, 'terminal');
-  assert.equal(responseParts[0].detail.command, 'npm run compile');
-  assert.equal(responseParts[1].type, 'error');
-  assert.equal(responseParts[1].buttons[0], 'Retry');
-  assert.equal(responseParts[2].type, 'footer');
-  assert.equal(responseParts[2].text, 'GPT-5.4 • 1x');
+  const terminalDetail = toolDetailOfKind(responsePartAt(responseParts, 0, 'tool').detail, 'terminal');
+  const errorPart = responsePartAt(responseParts, 1, 'error');
+  assert.equal(terminalDetail.command, 'npm run compile');
+  assert.equal(errorPart.buttons?.[0], 'Retry');
+  assert.equal(responsePartAt(responseParts, 2, 'footer').text, 'GPT-5.4 • 1x');
 });
 
 test('mapChatSessionDocument keeps whitespace-only text fragments between inline references', () => {
@@ -216,10 +233,10 @@ test('mapChatSessionDocument keeps whitespace-only text fragments between inline
   });
 
   const responseParts = document.turns[0].responseParts;
+  const markdownPart = responsePartAt(responseParts, 0, 'markdown');
   assert.equal(responseParts.length, 1);
-  assert.equal(responseParts[0].type, 'markdown');
   assert.equal(
-    responseParts[0].text,
+    markdownPart.text,
     'file:/workspace/unit-tests/test_super_emc.py file:/workspace/unit-tests/test_explorer_param_expansion.py'
   );
 });
@@ -274,28 +291,28 @@ test('mapChatSessionDocument groups subagent children and annotated edit code bl
   });
 
   const responseParts = document.turns[0].responseParts;
+  const thinkingPart = responsePartAt(responseParts, 0, 'thinking');
+  const subagentPart = responsePartAt(responseParts, 1, 'subagent');
+  const childTool = responsePartAt(subagentPart.children, 0, 'tool');
+  const childMarkdown = responsePartAt(subagentPart.children, 1, 'markdown');
+  const outerTool = responsePartAt(responseParts, 2, 'tool');
   assert.equal(responseParts.length, 3);
-  assert.equal(responseParts[0].type, 'thinking');
-  assert.equal(responseParts[0].children.length, 0);
-  assert.equal(responseParts[1].type, 'subagent');
-  assert.equal(responseParts[1].subAgentInvocationId, 'subagent-root');
-  assert.equal(responseParts[1].title, 'Reviewer: Review the parser');
-  assert.equal(responseParts[1].prompt, 'Inspect the mapper.');
-  assert.equal(responseParts[1].result, 'The mapper needs nested grouping.');
-  assert.equal(responseParts[1].children.length, 2);
-  assert.equal(responseParts[1].children[0].type, 'tool');
-  assert.equal(responseParts[1].children[0].toolCallId, 'child-read');
-  assert.equal(responseParts[1].children[1].type, 'markdown');
-  assert.equal(responseParts[1].children[1].text, '```ts\nconst nested = true;\n```\n');
-  assert.deepEqual(responseParts[1].children[1].codeBlocks, [
+  assert.equal(thinkingPart.children.length, 0);
+  assert.equal(subagentPart.subAgentInvocationId, 'subagent-root');
+  assert.equal(subagentPart.title, 'Reviewer: Review the parser');
+  assert.equal(subagentPart.prompt, 'Inspect the mapper.');
+  assert.equal(subagentPart.result, 'The mapper needs nested grouping.');
+  assert.equal(subagentPart.children.length, 2);
+  assert.equal(childTool.toolCallId, 'child-read');
+  assert.equal(childMarkdown.text, '```ts\nconst nested = true;\n```\n');
+  assert.deepEqual(childMarkdown.codeBlocks, [
     {
       label: 'file:///workspace/src/chatDocumentMapper.ts',
       isEdit: true,
       subAgentInvocationId: 'subagent-root'
     }
   ]);
-  assert.equal(responseParts[2].type, 'tool');
-  assert.equal(responseParts[2].toolCallId, 'outer-read');
+  assert.equal(outerTool.toolCallId, 'outer-read');
 });
 
 test('mapChatSessionDocument separates parallel subagents and folds deep nested tools into the root dropdown', () => {
@@ -350,13 +367,13 @@ test('mapChatSessionDocument separates parallel subagents and folds deep nested 
   });
 
   const responseParts = document.turns[0].responseParts;
+  const firstSubagent = responsePartAt(responseParts, 0, 'subagent');
+  const secondSubagent = responsePartAt(responseParts, 1, 'subagent');
   assert.equal(responseParts.length, 2);
-  assert.equal(responseParts[0].type, 'subagent');
-  assert.equal(responseParts[0].subAgentInvocationId, 'root-a');
-  assert.deepEqual(responseParts[0].children.map((part) => part.toolCallId), ['nested-task', 'deep-grep']);
-  assert.equal(responseParts[1].type, 'subagent');
-  assert.equal(responseParts[1].subAgentInvocationId, 'root-b');
-  assert.deepEqual(responseParts[1].children.map((part) => part.toolCallId), ['grep-b']);
+  assert.equal(firstSubagent.subAgentInvocationId, 'root-a');
+  assert.deepEqual(firstSubagent.children.map((part) => responsePartAt([part], 0, 'tool').toolCallId), ['nested-task', 'deep-grep']);
+  assert.equal(secondSubagent.subAgentInvocationId, 'root-b');
+  assert.deepEqual(secondSubagent.children.map((part) => responsePartAt([part], 0, 'tool').toolCallId), ['grep-b']);
 });
 
 test('mapChatSessionDocument backfills a subagent dropdown when children precede the parent tool', () => {
@@ -398,20 +415,20 @@ test('mapChatSessionDocument backfills a subagent dropdown when children precede
   });
 
   const responseParts = document.turns[0].responseParts;
+  const subagentPart = responsePartAt(responseParts, 0, 'subagent');
+  const childMarkdown = responsePartAt(subagentPart.children, 0, 'markdown');
+  const childTool = responsePartAt(subagentPart.children, 1, 'tool');
   assert.equal(responseParts.length, 1);
-  assert.equal(responseParts[0].type, 'subagent');
-  assert.equal(responseParts[0].title, 'Compatibility: Restore old ordering');
-  assert.equal(responseParts[0].children.length, 2);
-  assert.equal(responseParts[0].children[0].type, 'markdown');
-  assert.deepEqual(responseParts[0].children[0].codeBlocks, [
+  assert.equal(subagentPart.title, 'Compatibility: Restore old ordering');
+  assert.equal(subagentPart.children.length, 2);
+  assert.deepEqual(childMarkdown.codeBlocks, [
     {
       label: '/workspace/src/late.txt',
       isEdit: true,
       subAgentInvocationId: 'late-parent'
     }
   ]);
-  assert.equal(responseParts[0].children[1].type, 'tool');
-  assert.equal(responseParts[0].children[1].toolCallId, 'late-child');
+  assert.equal(childTool.toolCallId, 'late-child');
 });
 
 test('mapChatSessionDocument keeps tool-started thinking groups open through following tools and thinking parts', () => {
@@ -464,20 +481,19 @@ test('mapChatSessionDocument keeps tool-started thinking groups open through fol
   });
 
   const responseParts = document.turns[0].responseParts;
+  const thinkingPart = responsePartAt(responseParts, 1, 'thinking');
   assert.equal(responseParts.length, 3);
   assert.equal(responseParts[0].type, 'markdown');
-  assert.equal(responseParts[1].type, 'thinking');
-  assert.equal(responseParts[1].title, 'Reviewed 2 files and updated tasks and validation');
+  assert.equal(thinkingPart.title, 'Reviewed 2 files and updated tasks and validation');
   assert.deepEqual(
-    responseParts[1].children.filter((part) => part.type === 'tool').map((part) => part.toolCallId),
+    thinkingPart.children.filter((part) => part.type === 'tool').map((part) => part.toolCallId),
     ['check-files', 'read-first', 'update-tasks']
   );
   assert.equal(
-    responseParts[1].children.some((part) => part.type === 'markdown' && part.text.includes('**Deciding on git commitment**')),
+    thinkingPart.children.some((part) => part.type === 'markdown' && part.text.includes('**Deciding on git commitment**')),
     true
   );
-  assert.equal(responseParts[2].type, 'markdown');
-  assert.equal(responseParts[2].text, 'Final answer.');
+  assert.equal(responsePartAt(responseParts, 2, 'markdown').text, 'Final answer.');
 });
 
 test('mapChatSessionDocument routes text edit groups through edit annotations and suppresses placeholder fences', () => {
@@ -555,15 +571,14 @@ test('mapChatSessionDocument routes text edit groups through edit annotations an
   });
 
   const responseParts = document.turns[0].responseParts;
+  const subagentPart = responsePartAt(responseParts, 0, 'subagent');
   assert.equal(responseParts.length, 1);
-  assert.equal(responseParts[0].type, 'subagent');
   assert.deepEqual(
-    responseParts[0].children.filter((part) => part.type === 'edit').map((part) => part.uri),
+    subagentPart.children.filter((part) => part.type === 'edit').map((part) => part.uri),
     ['/workspace/README.md', '/workspace/demo.ps1', '/workspace/README.md']
   );
-  assert.equal(responseParts[0].children.some((part) => part.type === 'markdown'), false);
-  assert.equal(responseParts[0].children.at(-1).type, 'tool');
-  assert.equal(responseParts[0].children.at(-1).toolCallId, 'check-edits');
+  assert.equal(subagentPart.children.some((part) => part.type === 'markdown'), false);
+  assert.equal(responsePartAt([subagentPart.children.at(-1)!], 0, 'tool').toolCallId, 'check-edits');
 });
 
 test('mapChatSessionDocument inherits subagent routing from serialized edit annotations', () => {
@@ -597,9 +612,9 @@ test('mapChatSessionDocument inherits subagent routing from serialized edit anno
   });
 
   const responseParts = document.turns[0].responseParts;
+  const subagentPart = responsePartAt(responseParts, 0, 'subagent');
+  const editPart = responsePartAt(subagentPart.children, 0, 'edit');
   assert.equal(responseParts.length, 1);
-  assert.equal(responseParts[0].type, 'subagent');
-  assert.equal(responseParts[0].children.length, 1);
-  assert.equal(responseParts[0].children[0].type, 'edit');
-  assert.equal(responseParts[0].children[0].uri, '/workspace/serialized.md');
+  assert.equal(subagentPart.children.length, 1);
+  assert.equal(editPart.uri, '/workspace/serialized.md');
 });

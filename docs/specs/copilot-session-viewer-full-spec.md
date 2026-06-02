@@ -569,12 +569,16 @@ level:
 
 - `npm run compile`
 - `npm test`
+- `npm run test:typecheck`
+- `npm run test:vitest`
+
+`npm test` は compile、TypeScript テストの strict 型検査、Vitest の順に実行する。
 
 ## 15. 配布と同梱物の注意点
 
 - VSIX 生成は `npm run package:vsix`
-- `resources/**` は VSIX から除外される
-- そのため packaged extension にサンプルデータやローカルデータは含まれない
+- `resources/**` は VSIX から除外される。そのため packaged extension にサンプルデータやローカルデータは含まれない
+- `test/**`、`tsconfig.test.json`、`vitest.config.ts` は VSIX から除外される
 - 実運用では OS ごとの既定 root または `workspaceStorageRoots` の設定を使う
 - F5 デバッグ起動では `.vscode/launch.json` から `resources/workspaceStorage` を override root として渡す
 - detail renderer 用の `marked`、`dompurify`、`highlight.js` runtime asset は VSIX に含める

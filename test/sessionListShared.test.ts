@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const test = require('node:test');
+import { test } from 'vitest';
 
 test('filterVisibleSessions hides empty sessions by default', async () => {
   const { filterVisibleSessions } = await import('../media/sessionListShared.mjs');
