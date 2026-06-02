@@ -109,3 +109,27 @@ test('highlightCode uses the configured highlight library when the language is k
 
   assert.equal(html, '<mark>const value = 1;:ts</mark>');
 });
+
+test('setDetailDisclosuresOpen keeps turns open while updating message disclosures', async () => {
+  const { setDetailDisclosuresOpen } = await loadRendererModule();
+  const turns = [{ open: false }, { open: true }];
+  const messages = [{ open: true }, { open: true }, { open: false }];
+  const container = {
+    querySelectorAll(selector: string) {
+      if (selector === 'details.turn') {
+        return turns;
+      }
+
+      assert.equal(selector, 'details.message');
+      return messages;
+    }
+  };
+
+  setDetailDisclosuresOpen(container, false);
+  assert.deepEqual(turns.map((disclosure) => disclosure.open), [true, true]);
+  assert.deepEqual(messages.map((disclosure) => disclosure.open), [false, false, false]);
+
+  setDetailDisclosuresOpen(container, true);
+  assert.deepEqual(turns.map((disclosure) => disclosure.open), [true, true]);
+  assert.deepEqual(messages.map((disclosure) => disclosure.open), [true, true, true]);
+});

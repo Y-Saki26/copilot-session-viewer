@@ -137,6 +137,10 @@ export class SessionPanel {
           <h1>Conversation Viewer</h1>
           <p class="subtitle">Select a session from the sidebar to restore the saved conversation and inspect the response parts.</p>
         </div>
+        <div class="actions detail-actions">
+          <button id="collapseMessagesButton" class="secondary" disabled>Collapse all</button>
+          <button id="expandMessagesButton" class="secondary" disabled>Expand all</button>
+        </div>
       </header>
       <section id="detailSummary" class="summary"></section>
       <section id="detailTurns" class="detail-turns"></section>

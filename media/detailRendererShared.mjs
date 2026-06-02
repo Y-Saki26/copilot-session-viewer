@@ -153,6 +153,20 @@ export function formatMultilineText(value) {
   return escapeHtml(value == null ? '' : value).replace(/\n/g, '<br />');
 }
 
+export function setDetailDisclosuresOpen(container, open) {
+  if (!container || typeof container.querySelectorAll !== 'function') {
+    return;
+  }
+
+  Array.from(container.querySelectorAll('details.turn')).forEach(function (element) {
+    element.open = true;
+  });
+
+  Array.from(container.querySelectorAll('details.message')).forEach(function (element) {
+    element.open = open;
+  });
+}
+
 function createMarkedRenderer(codeBlocks, runtime) {
   return {
     code(token) {

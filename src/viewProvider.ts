@@ -16,6 +16,9 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
   private readonly sessionPanel: SessionPanel;
   private readonly workspaceSessions = new Map<string, SessionSummary[]>();
   private readonly workspaceLoads = new Map<string, Promise<void>>();
+  private workspacePreload?: Promise<void>;
+  private scanGeneration = 0;
+  private isRefreshing = false;
   private lastScan?: ScanSummary;
 
   public constructor(
@@ -42,7 +45,18 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
   }
 
   public async refresh(): Promise<void> {
+    if (this.isRefreshing) {
+      this.logger.info('Workspace scan skipped because another scan is already in progress.');
+      return;
+    }
+
+    this.isRefreshing = true;
     try {
+      this.scanGeneration += 1;
+      if (this.workspacePreload) {
+        this.workspacePreload = undefined;
+        this.postMessage({ type: 'workspaceSessionsPreloadCompleted', value: { cancelled: true } });
+      }
       const startedAt = Date.now();
       this.logger.info('Starting workspace scan.');
       this.workspaceSessions.clear();
@@ -60,6 +74,8 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
         type: 'scanError',
         value: this.errorMessage(error, 'Failed to scan session logs.')
       });
+    } finally {
+      this.isRefreshing = false;
     }
   }
 
@@ -127,6 +143,10 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
           void this.loadWorkspaceSessions(message.chatSessionsDir);
         }
         return;
+      case 'loadAllWorkspaceSessions':
+        this.logger.info('Sequential workspace session preload requested.');
+        this.startWorkspaceSessionsPreload();
+        return;
       case 'clientLog':
         this.logClientMessage(message.value);
         return;
@@ -163,6 +183,7 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
         </div>
         <div class="actions">
           <button id="refreshButton">Refresh</button>
+          <button id="loadAllButton" class="secondary" title="Load session summaries for every workspace sequentially" disabled>Load all</button>
           <button id="settingsButton" class="secondary">Settings</button>
         </div>
         <label class="toggle">
@@ -242,20 +263,27 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
       return;
     }
 
-    const loadTask = this.loadWorkspaceSessionsInternal(workspace);
+    const generation = this.scanGeneration;
+    const loadTask = this.loadWorkspaceSessionsInternal(workspace, generation);
     this.workspaceLoads.set(chatSessionsDir, loadTask);
 
     try {
       await loadTask;
     } finally {
-      this.workspaceLoads.delete(chatSessionsDir);
+      if (this.workspaceLoads.get(chatSessionsDir) === loadTask) {
+        this.workspaceLoads.delete(chatSessionsDir);
+      }
     }
   }
 
-  private async loadWorkspaceSessionsInternal(workspace: WorkspaceSummary): Promise<void> {
+  private async loadWorkspaceSessionsInternal(workspace: WorkspaceSummary, generation: number): Promise<void> {
     try {
       const startedAt = Date.now();
       const result = await this.scanner.readWorkspaceSessions(workspace);
+      if (generation !== this.scanGeneration) {
+        this.logger.info(`Discarding stale workspace session list after refresh: ${workspace.chatSessionsDir}.`);
+        return;
+      }
       this.workspaceSessions.set(workspace.chatSessionsDir, result.sessions);
       this.logger.info(`Workspace session list loaded in ${Date.now() - startedAt}ms: ${workspace.workspaceName} (${workspace.chatSessionsDir}). Sessions=${result.sessions.length}, Warnings=${result.warnings.length}.`);
       this.logWarnings(`Workspace ${workspace.workspaceName}`, result.warnings);
@@ -268,6 +296,10 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
         }
       });
     } catch (error) {
+      if (generation !== this.scanGeneration) {
+        this.logger.info(`Discarding stale workspace session load error after refresh: ${workspace.chatSessionsDir}.`);
+        return;
+      }
       this.logger.error(`Workspace session load failed: ${workspace.chatSessionsDir}.`, error);
       this.postMessage({
         type: 'workspaceSessionsError',
@@ -277,6 +309,60 @@ export class SessionsViewProvider implements vscode.WebviewViewProvider {
         }
       });
     }
+  }
+
+  private startWorkspaceSessionsPreload(): void {
+    if (this.isRefreshing) {
+      this.logger.info('Sequential workspace session preload skipped because a scan is in progress.');
+      this.postMessage({ type: 'workspaceSessionsPreloadCompleted', value: { cancelled: true } });
+      return;
+    }
+
+    if (this.workspacePreload) {
+      this.logger.info('Sequential workspace session preload is already in progress.');
+      return;
+    }
+
+    const generation = this.scanGeneration;
+    const workspaces = this.lastScan?.workspaces.slice() ?? [];
+    const preload = this.preloadWorkspaceSessions(workspaces, generation);
+    this.workspacePreload = preload;
+
+    void preload.finally(() => {
+      if (this.workspacePreload === preload) {
+        this.workspacePreload = undefined;
+      }
+    });
+  }
+
+  private async preloadWorkspaceSessions(workspaces: WorkspaceSummary[], generation: number): Promise<void> {
+    this.postMessage({
+      type: 'workspaceSessionsPreloadStarted',
+      value: { total: workspaces.length }
+    });
+
+    let completed = 0;
+    for (const workspace of workspaces) {
+      if (generation !== this.scanGeneration) {
+        return;
+      }
+
+      await this.loadWorkspaceSessions(workspace.chatSessionsDir);
+      if (generation !== this.scanGeneration) {
+        return;
+      }
+
+      completed += 1;
+      this.postMessage({
+        type: 'workspaceSessionsPreloadProgress',
+        value: { completed, total: workspaces.length }
+      });
+    }
+
+    this.postMessage({
+      type: 'workspaceSessionsPreloadCompleted',
+      value: { cancelled: false, total: workspaces.length }
+    });
   }
 
   private findWorkspaceSummary(chatSessionsDir: string): WorkspaceSummary | undefined {

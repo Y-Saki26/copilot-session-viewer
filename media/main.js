@@ -2,7 +2,8 @@ import {
   escapeHtml,
   formatMultilineText,
   normalizeDetailRendererDependencies,
-  renderMarkdownToHtml as renderMarkdownFragment
+  renderMarkdownToHtml as renderMarkdownFragment,
+  setDetailDisclosuresOpen
 } from './detailRendererShared.mjs';
 import { filterVisibleSessions } from './sessionListShared.mjs';
 
@@ -11,7 +12,8 @@ const persistedState = vscode.getState() || {};
 const state = {
   expandedWorkspaces: isPlainObject(persistedState.expandedWorkspaces) ? persistedState.expandedWorkspaces : {},
   selectedSessionPath: typeof persistedState.selectedSessionPath === 'string' ? persistedState.selectedSessionPath : undefined,
-  showEmptySessions: persistedState.showEmptySessions === true
+  showEmptySessions: persistedState.showEmptySessions === true,
+  scanDetailsExpanded: persistedState.scanDetailsExpanded === true
 };
 let markedLibrary;
 let domPurifyLibrary;
@@ -33,15 +35,17 @@ function initSessionsView() {
   const workspaceWarnings = new Map();
   const workspaceErrors = new Map();
   const loadingWorkspaces = new Set();
+  let isWorkspacePreloadRunning = false;
 
   const refreshButton = document.getElementById('refreshButton');
+  const loadAllButton = document.getElementById('loadAllButton');
   const settingsButton = document.getElementById('settingsButton');
   const showEmptySessionsCheckbox = document.getElementById('showEmptySessionsCheckbox');
   const summary = document.getElementById('summary');
   const warnings = document.getElementById('warnings');
   const sessions = document.getElementById('sessions');
 
-  if (!refreshButton || !settingsButton || !showEmptySessionsCheckbox || !summary || !warnings || !sessions) {
+  if (!refreshButton || !loadAllButton || !settingsButton || !showEmptySessionsCheckbox || !summary || !warnings || !sessions) {
     return;
   }
 
@@ -55,6 +59,15 @@ function initSessionsView() {
 
   settingsButton.addEventListener('click', function () {
     vscode.postMessage({ type: 'openSettings' });
+  });
+
+  loadAllButton.addEventListener('click', function () {
+    if (isWorkspacePreloadRunning || !currentScan || !Array.isArray(currentScan.workspaces) || currentScan.workspaces.length === 0) {
+      return;
+    }
+
+    setWorkspacePreloadState(true, 0, currentScan.workspaces.length);
+    vscode.postMessage({ type: 'loadAllWorkspaceSessions' });
   });
 
   showEmptySessionsCheckbox.addEventListener('change', function () {
@@ -73,6 +86,21 @@ function initSessionsView() {
 
     if (message.type === 'scanResult') {
       renderScan(message.value);
+      return;
+    }
+
+    if (message.type === 'workspaceSessionsPreloadStarted') {
+      setWorkspacePreloadState(true, 0, message.value.total);
+      return;
+    }
+
+    if (message.type === 'workspaceSessionsPreloadProgress') {
+      setWorkspacePreloadState(true, message.value.completed, message.value.total);
+      return;
+    }
+
+    if (message.type === 'workspaceSessionsPreloadCompleted') {
+      setWorkspacePreloadState(false);
       return;
     }
 
@@ -109,12 +137,14 @@ function initSessionsView() {
     summary.innerHTML = '<div class="card">' + escapeHtml(text) + '</div>';
     warnings.innerHTML = '';
     sessions.innerHTML = '';
+    updateLoadAllButton();
   }
 
   function renderError(text) {
     summary.innerHTML = '<div class="card error">' + escapeHtml(text) + '</div>';
     warnings.innerHTML = '';
     sessions.innerHTML = '';
+    updateLoadAllButton();
   }
 
   function renderScan(scan) {
@@ -122,6 +152,12 @@ function initSessionsView() {
     syncWorkspaceState(scan.workspaces);
 
     summary.innerHTML = [
+      '<details class="card scan-details"' + (state.scanDetailsExpanded ? ' open' : '') + '>',
+      '<summary>',
+      '<span>Scan details</span>',
+      '<span class="meta">' + escapeHtml(scan.loadedFromCache ? 'Cache' : 'Live') + ' · ' + escapeHtml(String(scan.workspaceCount)) + ' workspace(s)</span>',
+      '</summary>',
+      '<div class="scan-details-content">',
       '<div class="metrics">',
       metric('Source', scan.loadedFromCache ? 'Cache' : 'Live'),
       metric('Roots', String(scan.rootsScanned.length)),
@@ -129,10 +165,13 @@ function initSessionsView() {
       metric('Stored logs', String(scan.sessionCount)),
       metric('Scanned', formatDate(scan.scannedAt)),
       '</div>',
-      '<div class="card roots"><strong>Roots</strong><ul>' + scan.rootsScanned.map(function (root) {
+      '<div class="roots"><strong>Roots</strong><ul>' + scan.rootsScanned.map(function (root) {
         return '<li>' + escapeHtml(root) + '</li>';
-      }).join('') + '</ul></div>'
+      }).join('') + '</ul></div>',
+      '</div>',
+      '</details>'
     ].join('');
+    attachScanDetailsToggleListener(summary);
 
     if (Array.isArray(scan.warnings) && scan.warnings.length > 0) {
       warnings.innerHTML = '<div class="card warning"><strong>Warnings</strong><ul>' + scan.warnings.map(function (warning) {
@@ -159,15 +198,14 @@ function initSessionsView() {
       return [
         '<details class="workspace-group" data-workspace-key="' + escapeHtml(workspaceKey) + '"' + (isExpanded ? ' open' : '') + '>',
         '<summary class="workspace-header">',
-        '<div>',
-        '<p class="workspace-label">Workspace</p>',
+        '<span class="workspace-chevron" aria-hidden="true">▾</span>',
+        '<div class="workspace-main">',
         '<h2>' + escapeHtml(workspace.workspaceName) + '</h2>',
         workspace.workspaceFolder ? '<p class="path">' + escapeHtml(workspace.workspaceFolder) + '</p>' : '',
         '</div>',
-        '<span class="workspace-chevron" aria-hidden="true">▾</span>',
         '<div class="workspace-stats">',
         '<strong>' + escapeHtml(String(Array.isArray(loadedSessions) ? visibleSessions.length : workspace.sessionCount)) + '</strong>',
-        '<span>' + (Array.isArray(loadedSessions) ? 'Shown sessions' : 'Stored logs') + '</span>',
+        '<span>' + (Array.isArray(loadedSessions) ? 'shown' : 'logs') + '</span>',
         '</div>',
         '</summary>',
         '<div class="list">',
@@ -179,6 +217,22 @@ function initSessionsView() {
 
     attachWorkspaceToggleListeners(sessions, requestWorkspaceSessions);
     attachSessionSelectionListeners(sessions, findSessionSummaryBySourcePath);
+    updateLoadAllButton();
+  }
+
+  function setWorkspacePreloadState(isRunning, completed, total) {
+    isWorkspacePreloadRunning = isRunning;
+    loadAllButton.textContent = isRunning
+      ? 'Loading ' + String(completed || 0) + '/' + String(total || 0)
+      : 'Load all';
+    updateLoadAllButton();
+  }
+
+  function updateLoadAllButton() {
+    loadAllButton.disabled = isWorkspacePreloadRunning
+      || !currentScan
+      || !Array.isArray(currentScan.workspaces)
+      || currentScan.workspaces.length === 0;
   }
 
   function renderWorkspaceBody(workspace, loadedSessions, visibleSessions, loadWarnings, loadError, isLoading) {
@@ -247,6 +301,7 @@ function initSessionsView() {
     loadingWorkspaces.clear();
     state.expandedWorkspaces = {};
     state.selectedSessionPath = undefined;
+    setWorkspacePreloadState(false);
     persistState();
   }
 
@@ -284,8 +339,10 @@ function initSessionsView() {
 async function initSessionDetailView() {
   const detailSummary = document.getElementById('detailSummary');
   const detailTurns = document.getElementById('detailTurns');
+  const collapseMessagesButton = document.getElementById('collapseMessagesButton');
+  const expandMessagesButton = document.getElementById('expandMessagesButton');
 
-  if (!detailSummary || !detailTurns) {
+  if (!detailSummary || !detailTurns || !collapseMessagesButton || !expandMessagesButton) {
     return;
   }
 
@@ -297,6 +354,12 @@ async function initSessionDetailView() {
   }
 
   detailTurns.addEventListener('click', handleDetailLinkClick);
+  collapseMessagesButton.addEventListener('click', function () {
+    setDetailDisclosuresOpen(detailTurns, false);
+  });
+  expandMessagesButton.addEventListener('click', function () {
+    setDetailDisclosuresOpen(detailTurns, true);
+  });
 
   window.addEventListener('message', function (event) {
     const message = event.data;
@@ -336,6 +399,7 @@ async function initSessionDetailView() {
       '</div>'
     ].join('');
     detailTurns.innerHTML = '';
+    setDetailActionsEnabled(false);
   }
 
   function renderLoadingState(viewState) {
@@ -347,6 +411,7 @@ async function initSessionDetailView() {
       '</div>'
     ].join('');
     detailTurns.innerHTML = '';
+    setDetailActionsEnabled(false);
   }
 
   function renderErrorState(viewState) {
@@ -358,18 +423,28 @@ async function initSessionDetailView() {
       '</div>'
     ].join('');
     detailTurns.innerHTML = '';
+    setDetailActionsEnabled(false);
   }
 
   function renderDocument(documentValue) {
     const responderName = documentValue.responderUsername || 'Assistant';
+    const turnCount = Array.isArray(documentValue.turns) ? documentValue.turns.length : 0;
     detailSummary.innerHTML = [
+      '<details class="card scan-details detail-scan-details">',
+      '<summary>',
+      '<span>Session details</span>',
+      '<span class="meta">' + escapeHtml(String(turnCount)) + ' turn(s) · ' + escapeHtml(responderName) + '</span>',
+      '</summary>',
+      '<div class="scan-details-content">',
       '<div class="metrics detail-metrics">',
       metric('Workspace', documentValue.workspaceName || 'Unknown'),
-      metric('Turns', String(Array.isArray(documentValue.turns) ? documentValue.turns.length : 0)),
+      metric('Turns', String(turnCount)),
       metric('Created', formatDate(documentValue.createdAt)),
       metric('Updated', formatDate(documentValue.updatedAt)),
       metric('Responder', responderName),
       '</div>',
+      '</div>',
+      '</details>',
       '<div class="card detail-meta-card">',
       '<p class="workspace-label">Session</p>',
       '<h2>' + escapeHtml(documentValue.title || 'Untitled session') + '</h2>',
@@ -380,12 +455,19 @@ async function initSessionDetailView() {
 
     if (!Array.isArray(documentValue.turns) || documentValue.turns.length === 0) {
       detailTurns.innerHTML = '<div class="card empty">This session does not have any stored requests yet.</div>';
+      setDetailActionsEnabled(false);
       return;
     }
 
     detailTurns.innerHTML = '<div class="turn-list">' + documentValue.turns.map(function (turn, index) {
       return renderTurn(turn, index, responderName);
     }).join('') + '</div>';
+    setDetailActionsEnabled(true);
+  }
+
+  function setDetailActionsEnabled(enabled) {
+    collapseMessagesButton.disabled = !enabled;
+    expandMessagesButton.disabled = !enabled;
   }
 }
 
@@ -404,6 +486,18 @@ function attachWorkspaceToggleListeners(container, onExpand) {
         onExpand(workspaceKey);
       }
     });
+  });
+}
+
+function attachScanDetailsToggleListener(container) {
+  const element = container.querySelector('.scan-details');
+  if (!element) {
+    return;
+  }
+
+  element.addEventListener('toggle', function () {
+    state.scanDetailsExpanded = element.open;
+    persistState();
   });
 }
 
@@ -447,24 +541,28 @@ function renderMarkdownToHtml(markdownText, codeBlocks) {
 
 function renderTurn(turn, index, responderName) {
   return [
-    '<section class="turn">',
-    '<div class="turn-header">',
+    '<details class="turn" open>',
+    '<summary class="turn-header">',
     '<span class="turn-label">Turn ' + escapeHtml(String(index + 1)) + '</span>',
     '<span class="meta">' + escapeHtml(formatDate(turn.timestamp)) + '</span>',
-    '</div>',
+    '</summary>',
+    '<div class="turn-content">',
     renderUserMessage(turn),
     renderAssistantMessage(turn, responderName),
-    '</section>'
+    '</div>',
+    '</details>'
   ].join('');
 }
 
 function renderUserMessage(turn) {
   return [
-    '<article class="message message-user">',
-    '<p class="message-role">User</p>',
+    '<details class="message message-user" open>',
+    renderMessageSummary('User', summarizeText(turn.userText)),
+    '<div class="message-content">',
     '<div class="message-body">' + formatMultilineText(turn.userText) + '</div>',
     renderAttachments(turn.attachments),
-    '</article>'
+    '</div>',
+    '</details>'
   ].join('');
 }
 
@@ -482,19 +580,41 @@ function renderAttachments(attachments) {
 function renderAssistantMessage(turn, responderName) {
   if (!Array.isArray(turn.responseParts) || turn.responseParts.length === 0) {
     return [
-      '<article class="message message-assistant">',
-      '<p class="message-role">' + escapeHtml(responderName) + '</p>',
+      '<details class="message message-assistant" open>',
+      renderMessageSummary(responderName, 'No captured response content'),
+      '<div class="message-content">',
       '<div class="message-body muted-copy">No assistant response content was captured for this turn.</div>',
-      '</article>'
+      '</div>',
+      '</details>'
     ].join('');
   }
 
   return [
-    '<article class="message message-assistant response-shell">',
-    '<p class="message-role">' + escapeHtml(responderName) + '</p>',
+    '<details class="message message-assistant response-shell" open>',
+    renderMessageSummary(responderName, String(turn.responseParts.length) + ' response part(s)'),
+    '<div class="message-content">',
     '<div class="response-parts">' + turn.responseParts.map(renderResponsePart).join('') + '</div>',
-    '</article>'
+    '</div>',
+    '</details>'
   ].join('');
+}
+
+function renderMessageSummary(role, preview) {
+  return [
+    '<summary class="message-header">',
+    '<span class="message-role">' + escapeHtml(role) + '</span>',
+    preview ? '<span class="message-preview">' + escapeHtml(preview) + '</span>' : '',
+    '</summary>'
+  ].join('');
+}
+
+function summarizeText(value) {
+  const normalized = String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
+  if (normalized.length <= 80) {
+    return normalized;
+  }
+
+  return normalized.slice(0, 77) + '...';
 }
 
 function renderResponsePart(part) {
@@ -848,7 +968,8 @@ function persistState() {
   vscode.setState({
     expandedWorkspaces: state.expandedWorkspaces,
     selectedSessionPath: state.selectedSessionPath,
-    showEmptySessions: state.showEmptySessions
+    showEmptySessions: state.showEmptySessions,
+    scanDetailsExpanded: state.scanDetailsExpanded
   });
 }
 
