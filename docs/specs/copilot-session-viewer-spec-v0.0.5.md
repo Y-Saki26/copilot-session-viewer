@@ -17,7 +17,7 @@ v0.0.5 では、配布版で実環境の Copilot Chat ログを既定で参照�
 
 - `copilotSessionViewer.useBundledSampleData` 設定を削除した
 - `copilotSessionViewer.workspaceStorageRoots` が空の場合、OS ごとの既定 root を使う
-  - Windows: `%APPDATA%/Code/User/workspaceStorage`
+  - Windows: `%APPDATA%\Code\User\workspaceStorage`
   - UNIX 系: `~/.config/Code/User/workspaceStorage`
 - F5 デバッグ起動では `COPILOT_SESSION_VIEWER_WORKSPACE_STORAGE_ROOTS` により
   `resources/workspaceStorage` のサンプルデータを参照する

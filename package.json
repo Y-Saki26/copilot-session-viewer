@@ -59,13 +59,21 @@
     "configuration": {
       "title": "Copilot Session Viewer",
       "properties": {
+        "copilotSessionViewer.vscodeUserStorageRoots": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "VS Code user storage roots to scan. Each root is expected to contain `workspaceStorage` and `globalStorage`. When empty, the platform default is used: `%APPDATA%\\Code\\User` on Windows or `~/.config/Code/User` on UNIX-like systems."
+        },
         "copilotSessionViewer.workspaceStorageRoots": {
           "type": "array",
           "default": [],
           "items": {
             "type": "string"
           },
-          "markdownDescription": "workspaceStorage roots to scan. When empty, the platform default is used: `%APPDATA%/Code/User/workspaceStorage` on Windows or `~/.config/Code/User/workspaceStorage` on UNIX-like systems."
+          "markdownDescription": "Additional workspaceStorage roots to scan directly. Use this for sample data or other development inputs outside a VS Code user storage root."
         }
       }
     }

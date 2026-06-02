@@ -6,7 +6,7 @@
 
 Copilot Session Viewer は、GitHub Copilot Chat のセッションログを読み取り、VS Code の Activity Bar 内 Webview に一覧表示する VS Code 拡張です。
 
-`workspaceStorage` 配下の `chatSessions` を走査し、ワークスペースごとにセッションタイトルをまとめて表示します。起動時は SQLite キャッシュを即時表示し、その後バックグラウンドで再スキャンします。
+VS Code ユーザーストレージ配下の `workspaceStorage/*/chatSessions` と `globalStorage/emptyWindowChatSessions` を走査し、保存先ごとにセッションタイトルをまとめて表示します。起動時は SQLite キャッシュを即時表示し、その後バックグラウンドで再スキャンします。
 
 ## 主要構成
 
@@ -16,8 +16,8 @@ Copilot Session Viewer は、GitHub Copilot Chat のセッションログを読�
 - `vitest.config.ts`: TypeScript 単体テストと結合テストの Vitest 設定。
 - `src/extension.ts`: 拡張の activation entrypoint。Webview provider とコマンドを登録する。
 - `src/viewProvider.ts`: VS Code Webview の HTML 生成、メッセージ処理、スキャン/キャッシュ読み込みの調停。
-- `src/workspaceStorageRoots.ts`: OS ごとの既定 `workspaceStorage` ルートと開発用 override の解決。
-- `src/logScanner.ts`: `workspaceStorage` ルート解決、`chatSessions` 探索、JSONL/JSON セッションファイル解析。
+- `src/workspaceStorageRoots.ts`: OS ごとの既定 VS Code ユーザーストレージルートと開発用 override の解決。
+- `src/logScanner.ts`: ユーザーストレージ / `workspaceStorage` ルート解決、`chatSessions` 探索、JSONL/JSON セッションファイル解析。
 - `src/scanCacheRepository.ts`: `sql.js` を使った `globalStorageUri/session-cache.sqlite` の読み書き。
 - `src/types.ts`: スキャン結果、セッション、警告の共有型。
 - `media/main.js`: Webview 内の表示ロジック。VS Code API への postMessage と DOM 更新を担当する。
@@ -46,11 +46,11 @@ Copilot Session Viewer は、GitHub Copilot Chat のセッションログを読�
 
 `CopilotSessionScanner.scan()` は次の順序で処理します。
 
-1. `copilotSessionViewer.workspaceStorageRoots` から候補ルートを作る。空の場合は OS ごとの既定 root を使う。F5 デバッグ起動では `.vscode/launch.json` の `COPILOT_SESSION_VIEWER_WORKSPACE_STORAGE_ROOTS` が優先される。
+1. `copilotSessionViewer.vscodeUserStorageRoots` から候補ルートを作る。空の場合は OS ごとの既定 VS Code ユーザーストレージ root を使う。`copilotSessionViewer.workspaceStorageRoots` は直接走査する追加の `workspaceStorage` root として扱う。F5 デバッグ起動では `.vscode/launch.json` の `COPILOT_SESSION_VIEWER_WORKSPACE_STORAGE_ROOTS` が優先される。
 2. 存在しないルートは `warnings` に積む。
-3. 各ルート直下のワークスペースディレクトリから `chatSessions` を探す。
-4. `workspace.json` があれば `folder` または `workspace` から表示名とパスを作る。
-5. `chatSessions` 内の `.jsonl` と `.json` を解析する。
+3. ユーザーストレージ root 配下では `workspaceStorage/*/chatSessions` と `globalStorage/emptyWindowChatSessions` を探す。
+4. workspaceStorage 直下の候補では `workspace.json` があれば `folder` または `workspace` から表示名とパスを作る。空ウィンドウ履歴は `Empty Window` と表示する。
+5. `chatSessions` または `emptyWindowChatSessions` 内の `.jsonl` と `.json` を解析する。
 6. `updatedAt` 降順、同一時刻は `title` 昇順で返す。
 
 `resources/workspaceStorage` は F5 デバッグ起動と実ファイル検証テスト用のサンプルデータです。`.vscodeignore` により VSIX から除外されるため、配布版の実行時データとしては扱わないでください。

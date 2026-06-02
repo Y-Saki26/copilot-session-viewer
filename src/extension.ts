@@ -26,7 +26,7 @@ export function activate(context: vscode.ExtensionContext): void {
       logger.info('Open settings command invoked.');
       await vscode.commands.executeCommand(
         'workbench.action.openSettings',
-        'copilotSessionViewer.workspaceStorageRoots'
+        'copilotSessionViewer.vscodeUserStorageRoots'
       );
     })
   );

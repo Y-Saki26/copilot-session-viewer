@@ -143,7 +143,7 @@ function initSessionsView() {
     }
 
     if (!Array.isArray(scan.workspaces) || scan.workspaces.length === 0) {
-      sessions.innerHTML = '<div class="card empty">No workspaces with chatSessions were found in the configured roots.</div>';
+      sessions.innerHTML = '<div class="card empty">No saved chat sessions were found in the configured roots.</div>';
       return;
     }
 
