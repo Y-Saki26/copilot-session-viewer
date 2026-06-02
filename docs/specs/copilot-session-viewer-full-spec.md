@@ -453,8 +453,9 @@ Webview state に次を保持する。
 - `selectedSessionPath`
 - `expandedWorkspaces`
 - `showEmptySessions`
+- `scanDetailsExpanded`
 
-workspace の開閉状態と空セッション表示設定は再描画後も維持する。
+workspace と scan details の開閉状態、空セッション表示設定は再描画後も維持する。
 
 ## 11. Session Detail UI 仕様
 

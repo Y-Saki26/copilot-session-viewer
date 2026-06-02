@@ -12,7 +12,8 @@ const persistedState = vscode.getState() || {};
 const state = {
   expandedWorkspaces: isPlainObject(persistedState.expandedWorkspaces) ? persistedState.expandedWorkspaces : {},
   selectedSessionPath: typeof persistedState.selectedSessionPath === 'string' ? persistedState.selectedSessionPath : undefined,
-  showEmptySessions: persistedState.showEmptySessions === true
+  showEmptySessions: persistedState.showEmptySessions === true,
+  scanDetailsExpanded: persistedState.scanDetailsExpanded === true
 };
 let markedLibrary;
 let domPurifyLibrary;
@@ -123,7 +124,7 @@ function initSessionsView() {
     syncWorkspaceState(scan.workspaces);
 
     summary.innerHTML = [
-      '<details class="card scan-details">',
+      '<details class="card scan-details"' + (state.scanDetailsExpanded ? ' open' : '') + '>',
       '<summary>',
       '<span>Scan details</span>',
       '<span class="meta">' + escapeHtml(scan.loadedFromCache ? 'Cache' : 'Live') + ' · ' + escapeHtml(String(scan.workspaceCount)) + ' workspace(s)</span>',
@@ -142,6 +143,7 @@ function initSessionsView() {
       '</div>',
       '</details>'
     ].join('');
+    attachScanDetailsToggleListener(summary);
 
     if (Array.isArray(scan.warnings) && scan.warnings.length > 0) {
       warnings.innerHTML = '<div class="card warning"><strong>Warnings</strong><ul>' + scan.warnings.map(function (warning) {
@@ -439,6 +441,18 @@ function attachWorkspaceToggleListeners(container, onExpand) {
         onExpand(workspaceKey);
       }
     });
+  });
+}
+
+function attachScanDetailsToggleListener(container) {
+  const element = container.querySelector('.scan-details');
+  if (!element) {
+    return;
+  }
+
+  element.addEventListener('toggle', function () {
+    state.scanDetailsExpanded = element.open;
+    persistState();
   });
 }
 
@@ -909,7 +923,8 @@ function persistState() {
   vscode.setState({
     expandedWorkspaces: state.expandedWorkspaces,
     selectedSessionPath: state.selectedSessionPath,
-    showEmptySessions: state.showEmptySessions
+    showEmptySessions: state.showEmptySessions,
+    scanDetailsExpanded: state.scanDetailsExpanded
   });
 }
 
