@@ -12,8 +12,8 @@
 - 拡張機能名: Copilot Session Viewer
 - 現在バージョン: 0.0.5
 - 種別: VS Code 拡張機能
-- 目的: GitHub Copilot Chat の保存済みセッションログを読み取り、ワークスペース単位の一覧表示と、選択セッションの会話本文表示を行う
-- 想定データソース: VS Code の workspaceStorage 配下に保存された Copilot Chat セッションログ
+- 目的: GitHub Copilot Chat の保存済みセッションログを読み取り、保存先グループ単位の一覧表示と、選択セッションの会話本文表示を行う
+- 想定データソース: VS Code ユーザーストレージ配下の workspaceStorage と globalStorage に保存された Copilot Chat セッションログ
 
 本拡張は Activity Bar 上の専用ビューからセッション一覧を表示し、選択したセッションを別のメインパネルで復元表示する。起動時は SQLite キャッシュを優先表示し、その後に live scan を実行して結果を更新する。
 
@@ -50,7 +50,7 @@
 - `copilotSessionViewer.refreshSessions`
   - ワークスペース一覧の再 scan を実行する
 - `copilotSessionViewer.openSettings`
-  - `copilotSessionViewer.workspaceStorageRoots` 設定を開く
+  - `copilotSessionViewer.vscodeUserStorageRoots` 設定を開く
 
 ### 2.5 Output チャンネル
 
@@ -66,16 +66,23 @@
 
 ## 3. 設定
 
-### 3.1 `copilotSessionViewer.workspaceStorageRoots`
+### 3.1 `copilotSessionViewer.vscodeUserStorageRoots`
 
 - 型: string array
 - 既定値: []
-- 意味: scan する workspaceStorage ルート。空の場合は OS ごとの既定値を使う
+- 意味: scan する VS Code ユーザーストレージルート。空の場合は OS ごとの既定値を使う
 
 OS ごとの既定値:
 
-- Windows: `%APPDATA%/Code/User/workspaceStorage`
-- UNIX 系: `~/.config/Code/User/workspaceStorage`
+- Windows: `%APPDATA%\Code\User`
+- UNIX 系: `~/.config/Code/User`
+
+### 3.2 `copilotSessionViewer.workspaceStorageRoots`
+
+- 型: string array
+- 既定値: []
+- 意味: 追加で直接 scan する workspaceStorage ルート
+- 用途: `resources/workspaceStorage` のように VS Code ユーザーストレージ外に置いたデバッグ用サンプルデータ
 
 サポートするパス表記:
 
@@ -90,9 +97,9 @@ OS ごとの既定値:
 
 scan 対象 root は次の順序で組み立てる。
 
-1. `COPILOT_SESSION_VIEWER_WORKSPACE_STORAGE_ROOTS` が設定されている場合、その値
-2. `workspaceStorageRoots` に 1 件以上指定されている場合、その値
-3. いずれも指定されていない場合、OS ごとの既定値
+1. `COPILOT_SESSION_VIEWER_WORKSPACE_STORAGE_ROOTS` が設定されている場合、その値だけを直接 workspaceStorage root として使う
+2. override がない場合、`vscodeUserStorageRoots` に 1 件以上指定されていればその値、空なら OS ごとの既定値
+3. override がない場合、`workspaceStorageRoots` の各値を追加の直接 workspaceStorage root として加える
 
 `COPILOT_SESSION_VIEWER_WORKSPACE_STORAGE_ROOTS` は `.vscode/launch.json` から F5 デバッグ起動へ
 `resources/workspaceStorage` を渡すための開発用 override とする。複数指定時は OS の path delimiter で分割する。
@@ -102,9 +109,18 @@ scan 対象 root は次の順序で組み立てる。
 - 重複 root は排除する
 - 存在しない root は warning として記録する
 
-### 4.2 ワークスペース判定
+### 4.2 ユーザーストレージ配下の探索
 
-各 root 直下の子ディレクトリを workspace candidate とし、その配下に `chatSessions` ディレクトリが存在する場合のみ対象とする。
+VS Code ユーザーストレージ root ごとに次を探索する。
+
+- `workspaceStorage`: ワークスペース別ログの親ディレクトリ
+- `globalStorage/emptyWindowChatSessions`: ワークスペースを指定せず開始したチャットのログディレクトリ
+
+`globalStorage/state.vscdb` は一覧 index を含み得るが、現行実装では読み取らない。本文の正本である session file を scan する。
+
+### 4.3 ワークスペース判定
+
+ユーザーストレージ配下の `workspaceStorage` または直接指定された workspaceStorage root の直下にある子ディレクトリを workspace candidate とし、その配下に `chatSessions` ディレクトリが存在する場合のみ対象とする。
 
 workspace 情報の決定方法:
 
@@ -120,9 +136,11 @@ workspace summary は次を保持する。
 - `chatSessionsDir`
 - `sessionCount`
 
-### 4.3 セッションファイル探索
+`globalStorage/emptyWindowChatSessions` が存在する場合は `Empty Window` という workspace summary 相当のグループとして扱う。
 
-`chatSessions` 配下の次のファイルを対象とする。
+### 4.4 セッションファイル探索
+
+`chatSessions` または `emptyWindowChatSessions` 配下の次のファイルを対象とする。
 
 - `.jsonl`
 - `.json`
@@ -536,7 +554,7 @@ level:
 対象:
 
 - JSONL 復元器
-- workspaceStorage root 解決
+- VS Code ユーザーストレージ root と追加 workspaceStorage root の解決
 - sidebar の空セッション filter
 - detail Markdown renderer
 
@@ -549,6 +567,8 @@ level:
 - `requests` 有無の判定
 - Windows / UNIX 系の既定 root
 - デバッグ用 root override
+- ユーザーストレージ配下の workspace / empty window scan
+- 追加 workspaceStorage root の直接 scan
 - 空セッションの表示 / 非表示 filter
 - Markdown renderer dependency の fallback
 - code block annotation と syntax highlight
@@ -579,7 +599,8 @@ level:
 - VSIX 生成は `npm run package:vsix`
 - `resources/**` は VSIX から除外される。そのため packaged extension にサンプルデータやローカルデータは含まれない
 - `test/**`、`tsconfig.test.json`、`vitest.config.ts` は VSIX から除外される
-- 実運用では OS ごとの既定 root または `workspaceStorageRoots` の設定を使う
+- 実運用では OS ごとの既定 VS Code ユーザーストレージ root または `vscodeUserStorageRoots` の設定を使う
+- `workspaceStorageRoots` はユーザーストレージ外のサンプルデータなどを直接追加するときに使う
 - F5 デバッグ起動では `.vscode/launch.json` から `resources/workspaceStorage` を override root として渡す
 - detail renderer 用の `marked`、`dompurify`、`highlight.js` runtime asset は VSIX に含める
 
@@ -587,7 +608,7 @@ level:
 
 - GitHub Copilot Chat の UI 完全再現はしていない
 - response part の専用表示は一部種類のみ
-- `chatSessions` 直下以外の再帰 scan は行わない
+- `chatSessions` または `emptyWindowChatSessions` 直下以外の再帰 scan は行わない
 - scan cache は検索 index ではなく最後の scan snapshot
 - 初期表示高速化のため、session 一覧と本文は遅延読み込みに依存する
 
@@ -595,8 +616,8 @@ level:
 
 - `src/extension.ts`: 拡張起動、provider と command 登録、logger 初期化
 - `src/viewProvider.ts`: sidebar Webview、cache / scan / 遅延読み込み / session 選択の調停
-- `src/workspaceStorageRoots.ts`: OS ごとの既定 root とデバッグ用 override の解決
-- `src/logScanner.ts`: root 解決、workspace 検出、summary scan、session summary 復元
+- `src/workspaceStorageRoots.ts`: OS ごとの既定 VS Code ユーザーストレージ root とデバッグ用 override の解決
+- `src/logScanner.ts`: root 解決、workspace / empty window 検出、summary scan、session summary 復元
 - `src/chatLogDecoder.ts`: `.jsonl` mutation log と `.json` snapshot の全文 decode
 - `src/chatDocumentMapper.ts`: 復元済みデータから detail 表示用 document への変換
 - `src/sessionPanel.ts`: main panel Webview の生成と状態反映

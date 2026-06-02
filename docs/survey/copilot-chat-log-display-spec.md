@@ -8,7 +8,7 @@ Copilot Session Viewer で VS Code の Copilot Chat パネルに近い会話表�
 
 調査対象:
 
-- `resources/workspaceStorage/`: 実際の `%AppData%/Code/User/workspaceStorage` からコピーされたサンプルログ
+- `resources/workspaceStorage/`: 実際の `%AppData%\Code\User\workspaceStorage` からコピーされたサンプルログ
 - `resources/microsoft/vscode/`: VS Code 本体の現行実装
 - `resources/microsoft/vscode-copilot-chat/`: Copilot Chat 拡張の旧実装。現行の永続化仕様は VS Code 本体側を優先する
 
@@ -17,7 +17,7 @@ Copilot Session Viewer で VS Code の Copilot Chat パネルに近い会話表�
 現行 VS Code のローカルチャット履歴は、ワークスペースごとに次の場所へ保存される。
 
 ```text
-%AppData%/Code/User/workspaceStorage/<workspaceId>/chatSessions/<sessionId>.jsonl
+%AppData%\Code\User\workspaceStorage\<workspaceId>\chatSessions\<sessionId>.jsonl
 ```
 
 サンプルでは同じ `<workspaceId>` 配下に以下も存在する。
@@ -345,8 +345,9 @@ src/chatEditingReader.ts     chatEditingSessions の state と contents を必�
 
 一覧:
 
-- 引き続き全 `workspaceStorage` root を走査する
-- `chatSessions/*.jsonl` と `*.json` を対象にする
+- VS Code ユーザーストレージ root 配下の `workspaceStorage` と `globalStorage` を走査する
+- `workspaceStorage/*/chatSessions` と `globalStorage/emptyWindowChatSessions` の `*.jsonl` と `*.json` を対象にする
+- デバッグ用サンプルは workspaceStorage root を直接追加して走査できる
 - タイトル・作成日・更新日だけを高速抽出して cache に保存する
 - 将来、`state.vscdb` の index 読み取りを optional acceleration として追加可能
 

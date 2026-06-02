@@ -12,7 +12,7 @@
 2. npm run compile
 3. F5 で Extension Development Host を起動
 
-`.vscode/launch.json` は、F5 で起動した Extension Development Host に限り `COPILOT_SESSION_VIEWER_WORKSPACE_STORAGE_ROOTS` を設定します。これにより開発時は `resources/workspaceStorage` のサンプルデータを走査します。この環境変数は VSIX に含まれず、通常のインストール版では OS ごとの既定 root またはユーザー設定を使います。
+`.vscode/launch.json` は、F5 で起動した Extension Development Host に限り `COPILOT_SESSION_VIEWER_WORKSPACE_STORAGE_ROOTS` を設定します。これにより開発時は `resources/workspaceStorage` のサンプルデータだけを走査します。この環境変数は VSIX に含まれず、通常のインストール版では OS ごとの既定 VS Code ユーザーストレージ root または `copilotSessionViewer.vscodeUserStorageRoots` 設定を使います。追加サンプルを通常設定から読む場合は `copilotSessionViewer.workspaceStorageRoots` に直接指定します。
 
 ## テスト
 
