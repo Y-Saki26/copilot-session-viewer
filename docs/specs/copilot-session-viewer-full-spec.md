@@ -10,7 +10,7 @@
 ## 1. 製品概要
 
 - 拡張機能名: Copilot Session Viewer
-- 現在バージョン: 0.0.5
+- 現在バージョン: 0.1.0
 - 種別: VS Code 拡張機能
 - 目的: GitHub Copilot Chat の保存済みセッションログを読み取り、保存先グループ単位の一覧表示と、選択セッションの会話本文表示を行う
 - 想定データソース: VS Code ユーザーストレージ配下の workspaceStorage と globalStorage に保存された Copilot Chat セッションログ
@@ -172,6 +172,8 @@ sidebar の各 workspace は折りたたみ表示される。workspace を展開
 - 同一 workspace への重複要求は in-flight promise で統合する
 
 workspace を再展開したとき、同一セッション一覧が既にメモリ上にあれば再利用する。
+
+`Load all` 操作では全 workspace の session 一覧を順次読み込み、空セッション filter 適用後の件数を事前に反映できる。`Load all` と workspace 展開が同じ workspace の読み込みを要求した場合も、同じ in-flight promise またはメモリ cache を使う。refresh 後に完了した旧 scan 世代の workspace 読み込み結果は破棄する。
 
 ## 6. スキャン結果とキャッシュ仕様
 
@@ -410,6 +412,7 @@ session detail 表示時は軽量 summary ではなく、session file 全体を�
 
 - eyebrow: `Local Chat History`
 - Refresh ボタン
+- Load all ボタン
 - Settings ボタン
 - `Show empty sessions` チェックボックス
 
@@ -516,6 +519,7 @@ runtime dependency の読み込みに失敗した場合は escaped plain text �
 - `refresh`
 - `openSettings`
 - `loadWorkspaceSessions`
+- `loadAllWorkspaceSessions`
 - `selectSession`
 
 ### 12.2 extension host から sidebar Webview
@@ -524,6 +528,9 @@ runtime dependency の読み込みに失敗した場合は escaped plain text �
 - `scanError`
 - `workspaceSessionsLoaded`
 - `workspaceSessionsError`
+- `workspaceSessionsPreloadStarted`
+- `workspaceSessionsPreloadProgress`
+- `workspaceSessionsPreloadCompleted`
 
 ### 12.3 detail panel Webview から extension host
 
@@ -555,6 +562,8 @@ level:
 - Starting workspace scan
 - Workspace scan completed / failed
 - Workspace session list requested / loaded / failed / served from memory cache
+- Sequential workspace session preload requested / skipped / already in progress
+- refresh 後に完了した旧 scan 世代の workspace 読み込み結果の破棄
 - Session selected
 - Restoring session log
 - Session restored / failed
@@ -570,6 +579,7 @@ level:
 - VS Code ユーザーストレージ root と追加 workspaceStorage root の解決
 - sidebar の空セッション filter
 - detail Markdown renderer
+- workspace session 一覧の逐次 preload orchestration
 
 確認内容:
 
@@ -585,6 +595,9 @@ level:
 - 空セッションの表示 / 非表示 filter
 - Markdown renderer dependency の fallback
 - code block annotation と syntax highlight
+- workspace 一覧の逐次 preload
+- preload 中の workspace 展開要求に対する in-flight promise 再利用
+- refresh 後に完了した旧 scan 世代の preload 結果破棄
 
 ### 14.2 integration test
 
@@ -625,10 +638,10 @@ level:
 - scan cache は検索 index ではなく最後の scan snapshot
 - 初期表示高速化のため、session 一覧と本文は遅延読み込みに依存する
 
-## 17. v0.0.5 時点の主要モジュール
+## 17. v0.1.0 時点の主要モジュール
 
 - `src/extension.ts`: 拡張起動、provider と command 登録、logger 初期化
-- `src/viewProvider.ts`: sidebar Webview、cache / scan / 遅延読み込み / session 選択の調停
+- `src/viewProvider.ts`: sidebar Webview、cache / scan / 遅延読み込み / 逐次 preload / session 選択の調停
 - `src/workspaceStorageRoots.ts`: OS ごとの既定 VS Code ユーザーストレージ root とデバッグ用 override の解決
 - `src/logScanner.ts`: root 解決、workspace / empty window 検出、summary scan、session summary 復元
 - `src/chatLogDecoder.ts`: `.jsonl` mutation log と `.json` snapshot の全文 decode
